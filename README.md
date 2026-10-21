@@ -2,6 +2,8 @@
 
 A tiny pressure timer for ADHD workdays. Build a sequence of work blocks, see when each one must end, and focus on one countdown at a time.
 
+**Live app:** <https://juliusolsson05.github.io/work-timer/>
+
 ## What it does
 
 - Plans sequential work blocks with automatic start and finish times.
