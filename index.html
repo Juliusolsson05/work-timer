@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0c10" />
+    <meta
+      name="description"
+      content="A simple pressure timer for planning and finishing focused work blocks."
+    />
+    <title>Now, not later — Work Timer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="Work Timer home">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>NOW, NOT LATER</span>
+        </a>
+        <label class="sound-toggle">
+          <input id="sound-toggle" type="checkbox" checked />
+          <span>Sound</span>
+        </label>
+      </header>
+
+      <main>
+        <section id="planner-view" aria-labelledby="planner-heading">
+          <div class="hero">
+            <p class="eyebrow">MAKE THE DAY CONCRETE</p>
+            <h1 id="planner-heading" tabindex="-1">What must get done?</h1>
+            <p class="hero-copy">
+              Give every block a deadline. Then work on one thing until the clock says stop.
+            </p>
+          </div>
+
+          <div class="panel planner-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="step-label">01 / BUILD THE TIMELINE</p>
+                <h2>Today’s work blocks</h2>
+              </div>
+              <label class="start-time-field">
+                <span>Start at</span>
+                <input id="plan-start" type="time" required />
+              </label>
+            </div>
+
+            <div id="block-list" class="block-list" aria-live="polite"></div>
+
+            <button id="add-block" class="button button-quiet add-button" type="button">
+              <span aria-hidden="true">＋</span> Add work block
+            </button>
+          </div>
+
+          <div class="panel timeline-panel">
+            <div class="panel-heading timeline-heading">
+              <div>
+                <p class="step-label">02 / SEE THE PRESSURE</p>
+                <h2>Your timeline</h2>
+              </div>
+              <p id="plan-total" class="plan-total"></p>
+            </div>
+            <ol id="plan-timeline" class="timeline"></ol>
+          </div>
+
+          <button id="start-day" class="button button-primary start-day" type="button">
+            Start the first block <span aria-hidden="true">→</span>
+          </button>
+          <p id="planner-error" class="form-message error-message" role="alert"></p>
+        </section>
+
+        <section id="focus-view" class="focus-view" aria-labelledby="current-title" hidden>
+          <button id="back-to-plan" class="button button-link back-button" type="button">
+            <span aria-hidden="true">←</span> Edit plan
+          </button>
+
+          <div class="focus-card">
+            <div class="focus-status-row">
+              <span id="focus-status" class="status-pill" role="status" aria-live="polite" aria-atomic="true">READY</span>
+              <span id="focus-position" class="focus-position"></span>
+            </div>
+
+            <p class="focus-kicker">RIGHT NOW</p>
+            <h1 id="current-title" tabindex="-1">Writing</h1>
+            <div id="countdown" class="countdown" aria-live="off">02:30:00</div>
+            <p id="time-note" class="time-note"></p>
+
+            <div class="progress-track" aria-hidden="true">
+              <span id="progress-bar"></span>
+            </div>
+
+            <div id="focus-controls" class="focus-controls">
+              <button id="timer-toggle" class="button button-primary" type="button">Start timer</button>
+              <button id="finish-block" class="button button-secondary" type="button">Done early</button>
+            </div>
+
+            <div id="complete-actions" class="focus-controls" hidden>
+              <button id="new-day" class="button button-primary" type="button">Plan another day</button>
+            </div>
+          </div>
+
+          <div class="focus-timeline-wrap">
+            <div class="section-title-row">
+              <h2>Today</h2>
+              <button id="reset-day" class="button button-link danger-link" type="button">Reset everything</button>
+            </div>
+            <ol id="focus-timeline" class="focus-timeline"></ol>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p>Private by default. Your schedule stays in this browser.</p>
+        <details id="json-tools" class="json-tools">
+          <summary>Schedule JSON</summary>
+          <div class="json-tools-body">
+            <div>
+              <p class="json-title">Paste a schedule</p>
+              <p class="json-help">
+                Ask an AI to return this exact format, then paste it here to replace the current plan.
+              </p>
+            </div>
+            <textarea
+              id="json-input"
+              rows="11"
+              spellcheck="false"
+              aria-label="Schedule JSON input"
+              placeholder='{"startTime":"09:00","blocks":[{"title":"Writing","durationMinutes":150}]}'
+            ></textarea>
+            <div class="json-actions">
+              <button id="load-template" class="button button-quiet" type="button">Load template</button>
+              <button id="copy-template" class="button button-quiet" type="button">Copy template</button>
+              <button id="import-json" class="button button-secondary" type="button">Import schedule</button>
+            </div>
+            <p id="json-message" class="form-message" role="status"></p>
+            <details class="schema-details">
+              <summary>Schema rules</summary>
+              <ul>
+                <li><code>startTime</code>: 24-hour <code>HH:MM</code>.</li>
+                <li><code>blocks</code>: at least one item.</li>
+                <li><code>title</code>: non-empty text.</li>
+                <li><code>durationMinutes</code>: whole number from 1 to 1440.</li>
+              </ul>
+            </details>
+          </div>
+        </details>
+      </footer>
+    </div>
+
+    <template id="block-row-template">
+      <article class="block-row">
+        <span class="block-number" aria-hidden="true"></span>
+        <label class="block-title-field">
+          <span class="sr-only">Work block title</span>
+          <input class="block-title" type="text" maxlength="120" placeholder="What are you doing?" />
+        </label>
+        <label class="duration-field">
+          <span class="sr-only">Duration in minutes</span>
+          <input class="block-duration" type="number" min="1" max="1440" step="1" inputmode="numeric" />
+          <span>min</span>
+        </label>
+        <div class="row-actions">
+          <button class="icon-button move-up" type="button" aria-label="Move block up">↑</button>
+          <button class="icon-button move-down" type="button" aria-label="Move block down">↓</button>
+          <button class="icon-button remove-block" type="button" aria-label="Remove block">×</button>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
