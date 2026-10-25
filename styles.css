@@ -1,24 +1,32 @@
+/*
+  Source of truth for every token below: focus-flow-timer/src/index.css (the
+  Lovable app this page is restoring). The values are Focus Flow's HSL
+  tokens written out as hex, so the two can be compared side by side. Light
+  only on purpose: Focus Flow defined a .dark palette but never applied it,
+  and the calm white page is the feel being brought back.
+*/
 :root {
-  color-scheme: dark;
-  --bg: #0a0b0d;
-  --surface: #121418;
-  --surface-2: #181b20;
-  --border: #2a2e35;
-  --border-strong: #3b414a;
-  --text: #f4f1ea;
-  --muted: #989da6;
-  --faint: #676c74;
-  --accent: #f5ff72;
-  --accent-ink: #101108;
-  --urgent: #ff6b55;
-  --success: #72f5ae;
-  --radius: 18px;
-  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #121212; /* 0 0% 7% */
+  --card: #fafafa; /* 0 0% 98% */
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5; /* 0 0% 96% */
+  --secondary-hover: #f8f8f8; /* bg-secondary/70 over white */
+  --secondary-foreground: #333333; /* 0 0% 20% */
+  --muted-foreground: #8c8c8c; /* 0 0% 55% */
+  --border: #ebebeb; /* 0 0% 92% */
+  --ring: #000000;
+  --destructive: #dc2828; /* 0 72% 51% */
+  --timer-display: #1a1a1a; /* 0 0% 10% */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1); /* framer-motion [0.16, 1, 0.3, 1] */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
 }
 
 * {
   box-sizing: border-box;
+  border-color: var(--border);
 }
 
 [hidden] {
@@ -26,45 +34,34 @@
 }
 
 html {
-  min-width: 320px;
-  background: var(--bg);
-  scrollbar-color: var(--border-strong) var(--bg);
-  scrollbar-width: thin;
-}
-
-::-webkit-scrollbar {
-  width: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg);
-}
-
-::-webkit-scrollbar-thumb {
-  border: 2px solid var(--bg);
-  border-radius: 99px;
-  background: var(--border-strong);
+  background: var(--background);
 }
 
 body {
-  min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at 15% -10%, rgb(245 255 114 / 7%), transparent 28rem),
-    var(--bg);
-  color: var(--text);
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+  /*
+    Wide digits are allowed to spill past the 32rem column (the column is
+    flex-centred, so they overflow evenly on both sides). That is how Focus
+    Flow filled the screen, so the page must never scroll sideways because
+    of it.
+  */
+  overflow-x: hidden;
 }
 
 button,
 input,
 textarea {
   font: inherit;
+  color: inherit;
 }
 
-button,
-summary {
+button {
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -72,754 +69,867 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 3px solid rgb(245 255 114 / 32%);
-  outline-offset: 3px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
-.page-shell {
-  width: min(100% - 32px, 780px);
-  margin: 0 auto;
+/* ---- Icons: lucide paths, stroked like lucide-react's defaults ---- */
+
+.icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
 }
 
-.site-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 84px;
-  border-bottom: 1px solid var(--border);
+.icon-sm {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
-.brand {
-  display: inline-flex;
-  gap: 10px;
-  align-items: center;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.11em;
-  text-decoration: none;
+/* ---- Corner chrome ---- */
+
+.corner {
+  position: fixed;
+  top: 1.5rem;
+  z-index: 10;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted-foreground);
+  user-select: none;
+  transition: opacity 0.4s var(--ease), transform 0.15s ease;
 }
 
-.brand-mark {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 18px rgb(245 255 114 / 55%);
+.corner:active {
+  transform: scale(0.96);
+}
+
+.corner-left {
+  left: 1.5rem;
+}
+
+.corner-right {
+  right: 1.5rem;
+}
+
+.clock {
+  font-size: 1.5rem;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock.is-dimmed {
+  opacity: 0.15;
 }
 
 .sound-toggle {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  min-height: 44px;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.sound-toggle input {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--accent);
-}
-
-main {
-  padding: 72px 0 32px;
-}
-
-.hero {
-  margin-bottom: 40px;
-}
-
-.eyebrow,
-.step-label,
-.focus-kicker {
-  margin: 0 0 12px;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 11px;
+  font-size: 0.75rem;
   font-weight: 500;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  line-height: 2.25rem; /* lines up with the clock's text-2xl baseline */
 }
 
-h1,
-h2,
-p {
-  margin-top: 0;
+.sound-toggle[aria-pressed="false"] {
+  opacity: 0.5;
 }
 
-.hero h1 {
-  max-width: 720px;
-  margin-bottom: 14px;
-  font-size: clamp(40px, 7vw, 66px);
-  line-height: 0.98;
-  letter-spacing: -0.055em;
-  text-wrap: balance;
-}
+/* ---- Stage / column (Index.tsx: min-h-screen px-6 py-12, max-w-lg gap-12) ---- */
 
-.hero-copy {
-  max-width: 640px;
-  margin-bottom: 0;
-  color: var(--muted);
-  font-size: 17px;
-  line-height: 1.65;
-  text-wrap: pretty;
-}
-
-.panel {
-  margin-bottom: 18px;
-  padding: 28px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgb(18 20 24 / 86%);
-  box-shadow: 0 20px 60px rgb(0 0 0 / 18%);
-}
-
-.panel-heading,
-.section-title-row {
+.stage {
+  min-height: 100vh;
   display: flex;
-  gap: 24px;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  padding: 3rem 1.5rem;
 }
 
-.panel-heading {
-  margin-bottom: 24px;
-}
-
-.panel-heading h2,
-.section-title-row h2 {
-  margin-bottom: 0;
-  font-size: 20px;
-  letter-spacing: -0.025em;
-}
-
-.start-time-field {
+.column {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
   align-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-input,
-textarea {
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  background: #0e1013;
-  color: var(--text);
-}
-
-input:hover,
-textarea:hover {
-  border-color: #535a64;
-}
-
-.start-time-field input {
-  min-height: 42px;
-  padding: 0 11px;
-  font-family: var(--mono);
-}
-
-.block-list {
-  display: grid;
-  gap: 10px;
-}
-
-.block-row {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 106px auto;
-  gap: 10px;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-2);
-}
-
-.block-number {
-  color: #858a93;
-  font-family: var(--mono);
-  font-size: 12px;
-  text-align: center;
-}
-
-.block-title,
-.block-duration {
+  gap: 3rem;
   width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
+  max-width: 32rem;
 }
 
-.duration-field {
-  position: relative;
+/* Setup grows long once a plan is in, so it starts below the corner chrome
+   instead of being vertically centred off the top of the screen. */
+#setup-view {
+  padding-top: 2rem;
 }
 
-.duration-field span:last-child {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  color: #858a93;
-  font-family: var(--mono);
-  font-size: 11px;
-  transform: translateY(-50%);
-  pointer-events: none;
+.title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--muted-foreground);
+  text-align: center;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
-.block-duration {
-  padding-right: 36px;
-  font-family: var(--mono);
+.title:focus {
+  outline: none;
 }
 
-.row-actions {
+/* ---- The digits ---- */
+
+.digits-wrap {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
 }
 
-.icon-button {
-  display: grid;
-  width: 36px;
-  height: 44px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #b8bdc5;
-  font-size: 16px;
+/*
+  Focus Flow used clamp(6rem, 42vw, 28rem) for every value. At 42vw, MM:SS
+  fills the width nicely but HH:MM:SS is about 185vw wide, so any block of
+  an hour or more ran off both edges. The size now also divides by the
+  character count (set from JS as data-chars), so MM:SS keeps exactly the old
+  size and longer strings shrink just enough to fit. 210vw / 5 = 42vw is the
+  calibration point.
+*/
+.timer-digit {
+  --chars: 5;
+  font-size: clamp(4rem, min(42vw, calc(210vw / var(--chars))), 28rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  font-weight: 200;
   line-height: 1;
-  cursor: pointer;
+  white-space: nowrap;
+  color: var(--timer-display);
+  transition: color 0.5s ease;
 }
 
-.icon-button:hover:not(:disabled) {
-  background: #242830;
-  color: var(--text);
+.timer-digit[data-chars="8"] {
+  --chars: 8;
 }
 
-.icon-button:disabled {
-  opacity: 0.14;
-  cursor: not-allowed;
+.timer-digit.is-muted {
+  color: var(--muted-foreground);
 }
 
-.remove-block:hover {
-  color: var(--urgent) !important;
+/* ---- Setup: duration picker ---- */
+
+.setup-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  width: 100%;
 }
 
-.button {
-  min-height: 46px;
-  padding: 0 18px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 130ms ease, background 130ms ease, border-color 130ms ease;
+.section-label {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
 }
 
-.button:hover {
-  transform: translateY(-1px);
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-.button:disabled {
-  opacity: 0.38;
+.pill {
+  border: 0;
+  border-radius: 9999px;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  transition: background-color 0.2s, opacity 0.2s, transform 0.2s;
+}
+
+.pill:hover {
+  background: var(--secondary-hover);
+}
+
+.pill:active {
+  transform: scale(0.97);
+}
+
+.pill.is-selected,
+.pill-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.pill-primary:hover {
+  background: var(--primary);
+  opacity: 0.9;
+}
+
+.pill-large {
+  padding: 0.875rem 2.5rem;
+  font-size: 1rem;
+}
+
+.pill:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
   transform: none;
 }
 
-.button:active {
-  transform: translateY(0);
-}
-
-.button-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.button-primary:hover {
-  background: #f9ff9d;
-}
-
-.button-secondary {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.button-secondary:hover,
-.button-quiet:hover {
-  border-color: #585f69;
-  background: #20242a;
-}
-
-.button-quiet {
-  border-color: var(--border);
-  background: transparent;
-  color: var(--muted);
-}
-
-.button-link {
-  min-height: 44px;
-  padding: 0;
-  background: transparent;
-  color: var(--muted);
-}
-
-.add-button {
-  width: 100%;
-  margin-top: 12px;
-  border-style: dashed;
-}
-
-.plan-total {
-  margin: 0;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.timeline,
-.focus-timeline {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.timeline-item {
-  display: grid;
-  grid-template-columns: 116px 14px minmax(0, 1fr) auto;
-  gap: 13px;
-  align-items: center;
-  min-height: 58px;
-}
-
-.timeline-time {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.timeline-dot {
-  width: 8px;
-  height: 8px;
-  border: 2px solid var(--surface);
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-
-.timeline-title {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.timeline-duration {
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.start-day {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 62px;
-  margin-top: 22px;
-  font-size: 16px;
-}
-
-.form-message {
-  min-height: 20px;
-  margin: 12px 0 0;
-  color: var(--success);
-  font-size: 13px;
-}
-
-.error-message,
-.form-message.is-error {
-  color: var(--urgent);
-}
-
-.focus-view {
-  padding-top: 2px;
-}
-
-.back-button {
-  margin-bottom: 24px;
-}
-
-.focus-card {
-  position: relative;
-  overflow: hidden;
-  padding: clamp(28px, 6vw, 54px);
-  border: 1px solid var(--border-strong);
-  border-radius: 24px;
-  background:
-    linear-gradient(145deg, rgb(245 255 114 / 6%), transparent 48%),
-    var(--surface);
-}
-
-.focus-card::after {
-  position: absolute;
-  right: -80px;
-  bottom: -130px;
-  width: 280px;
-  height: 280px;
-  border-radius: 50%;
-  background: rgb(245 255 114 / 4%);
-  content: "";
-  pointer-events: none;
-}
-
-.focus-card.is-expired {
-  border-color: rgb(255 107 85 / 60%);
-  background:
-    linear-gradient(145deg, rgb(255 107 85 / 10%), transparent 52%),
-    var(--surface);
-}
-
-.focus-card.is-complete {
-  border-color: rgb(114 245 174 / 50%);
-}
-
-.focus-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 48px;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 29px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 99px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-}
-
-.status-pill.is-running {
-  border-color: rgb(245 255 114 / 32%);
-  background: rgb(245 255 114 / 8%);
-  color: var(--accent);
-}
-
-.status-pill.is-expired {
-  border-color: rgb(255 107 85 / 40%);
-  background: rgb(255 107 85 / 9%);
-  color: var(--urgent);
-}
-
-.status-pill.is-complete {
-  border-color: rgb(114 245 174 / 35%);
-  color: var(--success);
-}
-
-.focus-position,
-.time-note {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.focus-kicker {
-  margin-bottom: 12px;
-}
-
-.focus-card h1 {
-  position: relative;
-  z-index: 1;
-  max-width: 650px;
-  margin-bottom: 20px;
-  font-size: clamp(32px, 6vw, 54px);
-  line-height: 1.05;
-  letter-spacing: -0.045em;
-}
-
-.countdown {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 12px;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: clamp(48px, 11vw, 88px);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.07em;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.focus-card.is-expired .countdown {
-  color: var(--urgent);
-}
-
-.time-note {
-  margin-bottom: 30px;
-}
-
-.progress-track {
-  width: 100%;
-  height: 5px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: #282c32;
-}
-
-.progress-track span {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-  transition: width 250ms linear;
-}
-
-.focus-card.is-expired .progress-track span {
-  background: var(--urgent);
-}
-
-.focus-controls {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 10px;
-  margin-top: 30px;
-}
-
-.focus-timeline-wrap {
-  padding: 36px 4px 0;
-}
-
-.section-title-row {
-  margin-bottom: 18px;
-}
-
-.danger-link {
-  color: var(--faint);
-  font-size: 12px;
-}
-
-.danger-link:hover {
-  color: var(--urgent);
-}
-
-.focus-timeline-item {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  min-height: 52px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-}
-
-.focus-timeline-item:last-child {
-  border-bottom: 0;
-}
-
-.focus-timeline-item.is-current {
-  color: var(--text);
-}
-
-.focus-timeline-item.is-done .focus-item-title {
-  color: var(--faint);
-  text-decoration: line-through;
-}
-
-.focus-item-marker {
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-.focus-timeline-item.is-current .focus-item-marker {
-  color: var(--accent);
-}
-
-.focus-item-duration {
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-.site-footer {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-top: 48px;
-  padding: 28px 0 44px;
-  border-top: 1px solid var(--border);
-  color: var(--faint);
-  font-size: 12px;
-}
-
-.site-footer > p {
-  margin: 5px 0 0;
-}
-
-.json-tools {
-  width: min(100%, 520px);
-  text-align: right;
-}
-
-.json-tools > summary,
-.schema-details > summary {
-  min-height: 32px;
-  cursor: pointer;
-}
-
-.json-tools > summary {
-  display: inline-flex;
-  align-items: center;
-}
-
-.json-tools > summary:hover,
-.schema-details > summary:hover {
-  color: var(--text);
-}
-
-.json-tools-body {
-  margin-top: 16px;
-  padding: 22px;
+.text-input {
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  text-align: left;
+  border-radius: 0.75rem;
+  background: var(--background);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: box-shadow 0.2s;
 }
 
-.json-title {
-  margin-bottom: 5px;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 600;
+.text-input:focus,
+.text-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
-.json-help {
-  margin-bottom: 16px;
-  color: var(--muted);
+.text-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.text-input[aria-invalid="true"] {
+  box-shadow: 0 0 0 1.5px var(--destructive);
+}
+
+.custom-input {
+  width: 7rem;
+  padding: 0.625rem 1rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* ---- List sections (ReminderManager.tsx shape, reused for the plan) ---- */
+
+.list-section {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.list-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.list-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  transition: color 0.2s, transform 0.15s;
+}
+
+.link-button:hover,
+.link-button[aria-expanded="true"] {
+  color: var(--foreground);
+}
+
+.link-button:active {
+  transform: scale(0.97);
+}
+
+.inset-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--secondary);
+  animation: rise 0.3s var(--ease) both;
+}
+
+.inset-help {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.json-input {
+  width: 100%;
+  resize: vertical;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.75rem;
   line-height: 1.5;
 }
 
-#json-input {
-  width: 100%;
-  padding: 14px;
-  resize: vertical;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.json-actions {
+.inset-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
 }
 
-.json-actions .button {
-  min-height: 40px;
-  padding: 0 12px;
-  font-size: 12px;
+.grow {
+  flex: 1;
+}
+
+.solid-button,
+.soft-button {
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: transform 0.15s, opacity 0.2s;
+}
+
+.solid-button {
+  border: 0;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.soft-button {
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.solid-button:active,
+.soft-button:active {
+  transform: scale(0.97);
+}
+
+.every-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.interval-input {
+  width: 4rem;
+  text-align: center;
 }
 
 .schema-details {
-  margin-top: 14px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.schema-details summary {
+  cursor: pointer;
+  width: fit-content;
 }
 
 .schema-details ul {
-  margin: 7px 0 0;
-  padding-left: 20px;
-  color: var(--muted);
-  line-height: 1.8;
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  line-height: 1.6;
 }
 
-code {
-  font-family: var(--mono);
-  color: var(--text);
+.start-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
+.time-input {
+  padding: 0.375rem 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.row-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  background: var(--secondary);
+  animation: slide-in 0.25s ease both;
+}
+
+.row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.row-title {
+  width: 100%;
   border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--foreground);
+  outline: none;
+  text-overflow: ellipsis;
 }
 
-@media (max-width: 650px) {
-  .page-shell {
-    width: min(100% - 22px, 780px);
-  }
+.row-title::placeholder {
+  color: var(--muted-foreground);
+}
 
-  main {
-    padding-top: 48px;
-  }
+.row-title[aria-invalid="true"]::placeholder {
+  color: var(--destructive);
+}
 
-  .panel {
-    padding: 20px;
-  }
+.row-meta {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
 
-  .panel-heading {
-    align-items: flex-start;
-  }
+.minutes-field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
 
-  .planner-panel .panel-heading {
-    flex-direction: column;
-  }
+.minutes-input {
+  width: 3.5rem;
+  padding: 0.375rem 0.25rem;
+  text-align: center;
+}
 
-  .block-row {
-    grid-template-columns: 22px minmax(0, 1fr) 90px;
-  }
+.row-actions {
+  display: flex;
+  align-items: center;
+}
 
-  .row-actions {
-    grid-column: 2 / -1;
-    justify-content: flex-end;
-  }
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  padding: 0.25rem;
+  color: var(--muted-foreground);
+  transition: background-color 0.2s, transform 0.15s;
+}
 
-  .timeline-item {
-    grid-template-columns: 92px 10px minmax(0, 1fr);
-    gap: 9px;
-  }
+.icon-button:hover:not(:disabled) {
+  background: var(--background);
+}
 
-  .timeline-duration {
-    display: none;
-  }
+.icon-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
 
-  .focus-card {
-    padding: 26px 20px;
-  }
+.icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
 
-  .focus-status-row {
-    margin-bottom: 40px;
-  }
+.empty-note {
+  margin: 0;
+  padding: 0.75rem 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
 
-  .countdown {
-    font-size: clamp(42px, 15vw, 70px);
-  }
+.plan-summary {
+  margin: 0.75rem 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
 
-  .focus-controls {
-    grid-template-columns: 1fr;
-  }
+.plan-summary:empty {
+  display: none;
+}
 
-  .site-footer {
-    flex-direction: column;
-  }
+.form-message {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  text-align: center;
+}
 
-  .json-tools {
-    width: 100%;
-    text-align: left;
+.form-message:empty {
+  display: none;
+}
+
+.form-message.is-error {
+  color: var(--destructive);
+}
+
+.center-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.privacy-note {
+  margin: -1rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+
+/* ---- Running view ---- */
+
+.running-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.status-line {
+  margin: 0;
+  min-height: 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.round-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.round-button {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--secondary);
+  color: var(--foreground);
+  transition: background-color 0.2s, transform 0.15s;
+}
+
+.round-button:hover {
+  background: var(--secondary-hover);
+}
+
+.round-button:active {
+  transform: scale(0.95);
+}
+
+/* Play glyph sits optically left in a circle; lucide-react users nudge it
+   with ml-0.5 and Focus Flow did too. */
+.round-button .icon-play {
+  margin-left: 0.125rem;
+}
+
+.round-button .icon-play,
+.round-button.is-paused .icon-pause {
+  display: none;
+}
+
+.round-button.is-paused .icon-play {
+  display: block;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.chip-row:empty {
+  display: none;
+}
+
+.chip {
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  background: var(--secondary);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.chip.is-current {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.chip.is-done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* ---- Plan: corner button + floating panel ---- */
+
+.plan-button {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--secondary);
+  color: var(--foreground);
+  transition: background-color 0.2s, transform 0.15s;
+}
+
+.plan-button:hover {
+  background: var(--secondary-hover);
+}
+
+.plan-button:active {
+  transform: scale(0.95);
+}
+
+.plan-button[aria-expanded="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Block count, so a planned day is visible without opening the panel. */
+.plan-count {
+  position: absolute;
+  top: -0.125rem;
+  right: -0.125rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.3rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.plan-button[aria-expanded="true"] .plan-count {
+  display: none;
+}
+
+/*
+  Floats above the page (not a modal): the presets stay visible and usable
+  next to it on desktop. Its own scroll keeps a 20-block plan from pushing
+  the panel off-screen.
+*/
+.plan-panel {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 5.75rem;
+  z-index: 20;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background: var(--background);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 25%), 0 0 0 1px var(--border);
+  transform-origin: bottom right;
+  animation: panel-in 0.3s var(--ease) both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+/* ---- Reminder alert (ReminderAlert.tsx) ---- */
+
+.alert-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255 255 255 / 80%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: pop 0.4s var(--ease) both;
+}
+
+.alert-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: min(24rem, calc(100% - 2rem));
+  padding: 2.5rem;
+  border-radius: 1.5rem;
+  background: var(--card);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 25%);
+  animation: rise 0.4s var(--ease) both;
+}
+
+.alert-bell {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  font-size: 1.5rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.alert-text {
+  text-align: center;
+}
+
+.alert-text h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.alert-text p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.alert-done {
+  width: 100%;
+  border: 0;
+  border-radius: 1rem;
+  padding: 0.875rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 1rem;
+  font-weight: 500;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.alert-done:hover {
+  opacity: 0.9;
+}
+
+.alert-done:active {
+  transform: scale(0.97);
+}
+
+/*
+  ---- Motion ----
+  Stand-ins for Focus Flow's framer-motion entrances (y -12 title drop,
+  scale .95 digits, y 16 rise for the controls, all on the same easing).
+  The views toggle with [hidden], and display:none to visible restarts CSS
+  animations, so switching setup and running replays the entrance exactly
+  as AnimatePresence did.
+*/
+.anim-drop {
+  animation: drop 0.6s var(--ease) both;
+}
+
+.anim-scale {
+  animation: scale-in 0.6s var(--ease) both;
+}
+
+.anim-rise {
+  animation: rise 0.5s var(--ease) both;
+}
+
+.delay-1 {
+  animation-delay: 0.1s;
+}
+
+.delay-2 {
+  animation-delay: 0.2s;
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.1);
   }
 }
 
@@ -827,7 +937,44 @@ code {
   *,
   *::before,
   *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Phones: keep the clock and sound toggle from crowding the first content. */
+@media (max-width: 480px) {
+  .corner {
+    top: 1rem;
+  }
+
+  .corner-left {
+    left: 1rem;
+  }
+
+  .corner-right {
+    right: 1rem;
+  }
+
+  .plan-button {
+    right: 1rem;
+    bottom: 1rem;
+  }
+
+  .plan-panel {
+    right: 1rem;
+    bottom: 5.25rem;
+  }
+
+  .stage {
+    padding: 4.5rem 1rem 3rem;
+  }
+
+  .block-row {
+    flex-wrap: wrap;
+  }
+
+  .block-row .row-main {
+    flex-basis: 100%;
   }
 }

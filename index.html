@@ -3,171 +3,227 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b0c10" />
+    <!-- White, like the page itself: Focus Flow never applied its dark palette. -->
+    <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
-      content="A simple pressure timer for planning and finishing focused work blocks."
+      content="A calm focus timer with presets, reminders and a planned day of work blocks."
     />
-    <title>Now, not later — Work Timer</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Focus</title>
+    <!--
+      ?v= stamps bust the browser cache on releases that change the HTML/JS
+      contract. Without them a browser can pair new HTML with a cached old
+      app.js; GitHub Pages serves max-age=600, and python's http.server lets
+      browsers cache heuristically. Then byId() throws on ids that no longer
+      exist (seen live: "Missing required element #planner-view"). Bump all
+      three stamps (here, the script tag, and the core.js import in app.js)
+      together.
+    -->
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
-    <div class="page-shell">
-      <header class="site-header">
-        <a class="brand" href="./" aria-label="Work Timer home">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <span>NOW, NOT LATER</span>
-        </a>
-        <label class="sound-toggle">
-          <input id="sound-toggle" type="checkbox" checked />
-          <span>Sound</span>
-        </label>
-      </header>
+    <!--
+      Corner chrome stays fixed and quiet so the digits own the screen. The
+      clock is Focus Flow's CurrentTime: click to dim it to 15% when even the
+      time of day is a distraction.
+    -->
+    <button id="clock" class="corner corner-left clock" type="button" aria-label="Current time, click to dim">--:--</button>
+    <button id="sound-toggle" class="corner corner-right sound-toggle" type="button" aria-pressed="true">Sound on</button>
 
-      <main>
-        <section id="planner-view" aria-labelledby="planner-heading">
-          <div class="hero">
-            <p class="eyebrow">MAKE THE DAY CONCRETE</p>
-            <h1 id="planner-heading" tabindex="-1">What must get done?</h1>
-            <p class="hero-copy">
-              Give every block a deadline. Then work on one thing until the clock says stop.
-            </p>
-          </div>
+    <main class="stage">
+      <section id="setup-view" class="column" aria-labelledby="setup-title">
+        <h1 id="setup-title" class="title anim-drop" tabindex="-1">Focus</h1>
 
-          <div class="panel planner-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="step-label">01 / BUILD THE TIMELINE</p>
-                <h2>Today’s work blocks</h2>
-              </div>
-              <label class="start-time-field">
-                <span>Start at</span>
-                <input id="plan-start" type="time" required />
-              </label>
+        <div class="digits-wrap anim-scale">
+          <span id="setup-digits" class="timer-digit" data-chars="5">30:00</span>
+        </div>
+
+        <div class="setup-controls anim-rise">
+          <p class="section-label">Focus Duration</p>
+          <div id="presets" class="pill-row" role="group" aria-label="Focus duration presets"></div>
+          <input
+            id="custom-minutes"
+            class="text-input custom-input"
+            type="number"
+            min="1"
+            max="1440"
+            step="1"
+            inputmode="numeric"
+            placeholder="Custom min"
+            aria-label="Custom focus minutes"
+          />
+          <button id="start-quick" class="pill pill-primary pill-large" type="button">Start Focus</button>
+        </div>
+
+
+        <section class="list-section anim-rise delay-1" aria-labelledby="reminders-label">
+          <div class="list-header">
+            <div class="list-label">
+              <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
+              <span id="reminders-label">Reminders</span>
             </div>
-
-            <div id="block-list" class="block-list" aria-live="polite"></div>
-
-            <button id="add-block" class="button button-quiet add-button" type="button">
-              <span aria-hidden="true">＋</span> Add work block
+            <button id="add-reminder" class="link-button" type="button">
+              <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+              Add
             </button>
           </div>
 
-          <div class="panel timeline-panel">
-            <div class="panel-heading timeline-heading">
-              <div>
-                <p class="step-label">02 / SEE THE PRESSURE</p>
-                <h2>Your timeline</h2>
-              </div>
-              <p id="plan-total" class="plan-total"></p>
+          <form id="reminder-form" class="inset-panel" hidden>
+            <input id="reminder-label" class="text-input" type="text" maxlength="80" placeholder="e.g. Do pushups" aria-label="Reminder" />
+            <div class="every-row">
+              <span>Every</span>
+              <input id="reminder-interval" class="text-input interval-input" type="number" min="1" max="1440" step="1" value="30" inputmode="numeric" aria-label="Reminder interval in minutes" />
+              <span>min</span>
             </div>
-            <ol id="plan-timeline" class="timeline"></ol>
-          </div>
+            <div class="inset-actions">
+              <button class="solid-button grow" type="submit">Add</button>
+              <button id="cancel-reminder" class="soft-button grow" type="button">Cancel</button>
+            </div>
+          </form>
 
-          <button id="start-day" class="button button-primary start-day" type="button">
-            Start the first block <span aria-hidden="true">→</span>
-          </button>
-          <p id="planner-error" class="form-message error-message" role="alert"></p>
+          <div id="reminder-list" class="row-list"></div>
+          <p id="reminders-empty" class="empty-note">No reminders set</p>
         </section>
 
-        <section id="focus-view" class="focus-view" aria-labelledby="current-title" hidden>
-          <button id="back-to-plan" class="button button-link back-button" type="button">
-            <span aria-hidden="true">←</span> Edit plan
+        <p class="privacy-note">Everything stays in this browser.</p>
+      </section>
+
+      <section id="focus-view" class="column" aria-labelledby="current-title" hidden>
+        <h1 class="title anim-drop" tabindex="-1" id="current-title">Focus</h1>
+
+        <div class="digits-wrap anim-scale">
+          <span id="countdown" class="timer-digit" data-chars="5" aria-hidden="true">30:00</span>
+        </div>
+
+        <div class="running-controls anim-rise">
+          <p id="status-line" class="status-line" role="status" aria-live="polite"></p>
+
+          <div class="round-row">
+            <button id="timer-toggle" class="round-button" type="button" aria-label="Pause">
+              <svg class="icon icon-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></svg>
+              <svg class="icon icon-play" viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3" /></svg>
+            </button>
+            <button id="finish-block" class="round-button" type="button" aria-label="Done early">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+            </button>
+            <button id="stop-session" class="round-button" type="button" aria-label="Stop and go back">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
+            </button>
+          </div>
+
+          <button id="next-action" class="pill pill-primary pill-large" type="button" hidden>Next</button>
+
+          <div id="plan-chips" class="chip-row" aria-label="Plan"></div>
+          <div id="reminder-chips" class="chip-row" aria-label="Reminders"></div>
+        </div>
+      </section>
+    </main>
+
+    <!--
+      The plan is tucked behind a corner button instead of sitting under the
+      presets: the setup screen should stay Focus Flow's "pick a time, go",
+      and the day plan is something you open on purpose. Fixed bottom-right
+      so it mirrors the clock and stays reachable on long pages.
+    -->
+    <button id="plan-button" class="plan-button" type="button" aria-expanded="false" aria-controls="plan-panel" aria-label="Open plan">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></svg>
+      <span id="plan-count" class="plan-count" hidden></span>
+    </button>
+
+    <aside id="plan-panel" class="plan-panel" aria-labelledby="plan-label" hidden>
+      <div class="list-header">
+        <div class="list-label">
+          <span id="plan-label">Plan</span>
+        </div>
+        <div class="list-links">
+          <button id="toggle-import" class="link-button" type="button" aria-expanded="false" aria-controls="import-panel">Import JSON</button>
+          <button id="add-block" class="link-button" type="button">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+            Add
           </button>
+          <button id="close-plan" class="icon-button" type="button" aria-label="Close plan">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+          </button>
+        </div>
+      </div>
 
-          <div class="focus-card">
-            <div class="focus-status-row">
-              <span id="focus-status" class="status-pill" role="status" aria-live="polite" aria-atomic="true">READY</span>
-              <span id="focus-position" class="focus-position"></span>
-            </div>
-
-            <p class="focus-kicker">RIGHT NOW</p>
-            <h1 id="current-title" tabindex="-1">Writing</h1>
-            <div id="countdown" class="countdown" aria-live="off">02:30:00</div>
-            <p id="time-note" class="time-note"></p>
-
-            <div class="progress-track" aria-hidden="true">
-              <span id="progress-bar"></span>
-            </div>
-
-            <div id="focus-controls" class="focus-controls">
-              <button id="timer-toggle" class="button button-primary" type="button">Start timer</button>
-              <button id="finish-block" class="button button-secondary" type="button">Done early</button>
-            </div>
-
-            <div id="complete-actions" class="focus-controls" hidden>
-              <button id="new-day" class="button button-primary" type="button">Plan another day</button>
-            </div>
-          </div>
-
-          <div class="focus-timeline-wrap">
-            <div class="section-title-row">
-              <h2>Today</h2>
-              <button id="reset-day" class="button button-link danger-link" type="button">Reset everything</button>
-            </div>
-            <ol id="focus-timeline" class="focus-timeline"></ol>
-          </div>
-        </section>
-      </main>
-
-      <footer class="site-footer">
-        <p>Private by default. Your schedule stays in this browser.</p>
-        <details id="json-tools" class="json-tools">
-          <summary>Schedule JSON</summary>
-          <div class="json-tools-body">
-            <div>
-              <p class="json-title">Paste a schedule</p>
-              <p class="json-help">
-                Ask an AI to return this exact format, then paste it here to replace the current plan.
-              </p>
-            </div>
-            <textarea
-              id="json-input"
-              rows="11"
-              spellcheck="false"
-              aria-label="Schedule JSON input"
-              placeholder='{"startTime":"09:00","blocks":[{"title":"Writing","durationMinutes":150}]}'
-            ></textarea>
-            <div class="json-actions">
-              <button id="load-template" class="button button-quiet" type="button">Load template</button>
-              <button id="copy-template" class="button button-quiet" type="button">Copy template</button>
-              <button id="import-json" class="button button-secondary" type="button">Import schedule</button>
-            </div>
-            <p id="json-message" class="form-message" role="status"></p>
-            <details class="schema-details">
-              <summary>Schema rules</summary>
-              <ul>
-                <li><code>startTime</code>: 24-hour <code>HH:MM</code>.</li>
-                <li><code>blocks</code>: at least one item.</li>
-                <li><code>title</code>: non-empty text.</li>
-                <li><code>durationMinutes</code>: whole number from 1 to 1440.</li>
-              </ul>
-            </details>
-          </div>
+      <div id="import-panel" class="inset-panel" hidden>
+        <p class="inset-help">Ask an AI for this exact format, paste it here, and it replaces the plan.</p>
+        <textarea
+          id="json-input"
+          class="text-input json-input"
+          rows="8"
+          spellcheck="false"
+          aria-label="Schedule JSON input"
+          placeholder='{"startTime":"09:00","blocks":[{"title":"Writing","durationMinutes":150}]}'
+        ></textarea>
+        <div class="inset-actions">
+          <button id="load-template" class="soft-button" type="button">Load template</button>
+          <button id="copy-template" class="soft-button" type="button">Copy template</button>
+          <button id="import-json" class="solid-button" type="button">Import</button>
+        </div>
+        <p id="json-message" class="form-message" role="status"></p>
+        <details class="schema-details">
+          <summary>Format rules</summary>
+          <ul>
+            <li><code>startTime</code>: 24-hour <code>HH:MM</code>.</li>
+            <li><code>blocks</code>: 1–50 items.</li>
+            <li><code>title</code>: text, up to 120 characters.</li>
+            <li><code>durationMinutes</code>: whole number from 1 to 1440.</li>
+          </ul>
         </details>
-      </footer>
+      </div>
+
+      <label class="start-row">
+        <span>Starts at</span>
+        <input id="plan-start" class="text-input time-input" type="time" required />
+      </label>
+
+      <div id="block-list" class="row-list"></div>
+      <p id="plan-empty" class="empty-note" hidden>No blocks planned</p>
+      <p id="plan-summary" class="plan-summary"></p>
+      <p id="planner-error" class="form-message is-error" role="alert"></p>
+      <div class="center-row">
+        <button id="start-plan" class="pill pill-primary" type="button">Start plan</button>
+      </div>
+    </aside>
+
+    <!-- Focus Flow's ReminderAlert: the timer is paused until "Done". -->
+    <div id="reminder-alert" class="alert-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="reminder-alert-title" hidden>
+      <div class="alert-card">
+        <div class="alert-bell" aria-hidden="true">⏰</div>
+        <div class="alert-text">
+          <h2 id="reminder-alert-title">Reminder</h2>
+          <p>Time for a break</p>
+        </div>
+        <button id="dismiss-reminder" class="alert-done" type="button">Done</button>
+      </div>
     </div>
 
     <template id="block-row-template">
-      <article class="block-row">
-        <span class="block-number" aria-hidden="true"></span>
-        <label class="block-title-field">
-          <span class="sr-only">Work block title</span>
-          <input class="block-title" type="text" maxlength="120" placeholder="What are you doing?" />
-        </label>
-        <label class="duration-field">
-          <span class="sr-only">Duration in minutes</span>
-          <input class="block-duration" type="number" min="1" max="1440" step="1" inputmode="numeric" />
+      <div class="row-card block-row">
+        <div class="row-main">
+          <input class="row-title block-title" type="text" maxlength="120" placeholder="What are you doing?" />
+          <span class="row-meta block-meta"></span>
+        </div>
+        <label class="minutes-field">
+          <input class="text-input minutes-input block-duration" type="number" min="1" max="1440" step="1" inputmode="numeric" />
           <span>min</span>
         </label>
         <div class="row-actions">
-          <button class="icon-button move-up" type="button" aria-label="Move block up">↑</button>
-          <button class="icon-button move-down" type="button" aria-label="Move block down">↓</button>
-          <button class="icon-button remove-block" type="button" aria-label="Remove block">×</button>
+          <button class="icon-button move-up" type="button" aria-label="Move block up">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+          </button>
+          <button class="icon-button move-down" type="button" aria-label="Move block down">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+          </button>
+          <button class="icon-button remove-block" type="button" aria-label="Remove block">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+          </button>
         </div>
-      </article>
+      </div>
     </template>
 
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/app.js?v=3"></script>
   </body>
 </html>

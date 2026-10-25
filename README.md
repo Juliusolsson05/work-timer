@@ -1,16 +1,16 @@
-# Now, Not Later
+# Focus
 
-A tiny pressure timer for ADHD workdays. Build a sequence of work blocks, see when each one must end, and focus on one countdown at a time.
+A calm focus timer for ADHD workdays: a white page where a giant countdown is the whole screen. Pick a duration and go, or plan the day as a list of work blocks and let the timer walk you through them.
 
 **Live app:** <https://juliusolsson05.github.io/work-timer/>
 
 ## What it does
 
-- Plans sequential work blocks with automatic start and finish times.
-- Runs an accurate countdown that survives refreshes and sleeping tabs.
-- Pauses, resumes, finishes early, and waits for you before starting the next block.
-- Saves the plan and active timer in this browser only.
-- Imports an AI-generated schedule through the collapsed **Schedule JSON** tool in the footer.
+- **Start Focus:** pick a preset (15 min to 2 hr) or type custom minutes, and the countdown starts.
+- **Plan:** list your work blocks, set the start time, and see when each one ends. Start the plan and the blocks run one after another; done-early waits for you before the next one.
+- **Reminders:** "Stretch every 30 min" style reminders. They pause the timer behind a full-screen alert with a tri-tone until you press Done, and they still fire if the laptop slept past them.
+- The countdown is timestamp-based, so it survives refreshes and sleeping tabs. Space pauses or resumes; click the clock to dim it.
+- **Import JSON:** paste an AI-generated schedule into the plan (see below).
 
 There is no account, backend, analytics, or cloud sync.
 
@@ -29,11 +29,11 @@ npm test
 npm run check
 ```
 
-The deliberately small test suite covers schedule import/timeline calculation and timestamp-based timer restoration.
+The test suite covers schedule import and the timeline, timestamp-based timer restoration, quick sessions, reminder timing across sleep, and loading state saved by older versions.
 
 ## Schedule JSON
 
-Open **Schedule JSON** in the page footer, paste an object in this format, and choose **Import schedule**:
+Choose **Import JSON** in the Plan section, paste an object in this format, and choose **Import**:
 
 ```json
 {
@@ -60,7 +60,7 @@ Rules:
 
 A useful request to give an AI:
 
-> Return only valid schedule JSON for the Now, Not Later timer. Use `{ "startTime": "HH:MM", "blocks": [{ "title": "...", "durationMinutes": 30 }] }`. Do not wrap it in Markdown.
+> Return only valid schedule JSON for the Focus timer. Use `{ "startTime": "HH:MM", "blocks": [{ "title": "...", "durationMinutes": 30 }] }`. Do not wrap it in Markdown.
 
 ## Privacy
 
