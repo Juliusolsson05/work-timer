@@ -76,9 +76,12 @@ Setup (phase `draft`):
 - clock at the top left, sound toggle at the top right (muted text button)
 - muted "Focus" title, digits showing the selected quick duration
 - FOCUS DURATION presets + custom minutes + black "Start Focus" pill
-- PLAN section: start time, block rows (title, minutes, up/down/remove), a
-  "+ Add" link, a summary "3h 30m · ends 12:30", a "Start plan" pill, and an
-  "Import JSON" link that opens the textarea panel inline
+- PLAN lives behind a round list-icon button fixed bottom-right (with a
+  block-count badge), not under the presets. The owner asked for this after
+  the first pass: the setup screen should stay "pick a time, go". It opens a
+  floating panel with the start time, block rows, a summary, Import JSON and
+  a "Start plan" button. Escape or × closes it, and it is hidden while a
+  session runs.
 - REMINDERS section: unchanged from Focus Flow
 
 Running (`ready` / `running` / `paused` / `expired` / `completed`):

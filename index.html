@@ -19,7 +19,7 @@
       three stamps (here, the script tag, and the core.js import in app.js)
       together.
     -->
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <!--
@@ -55,68 +55,8 @@
           <button id="start-quick" class="pill pill-primary pill-large" type="button">Start Focus</button>
         </div>
 
-        <!--
-          The plan sits under the presets in the same visual language as Focus
-          Flow's reminder list, so the day planner reads as one more calm list
-          and not a second app bolted on top.
-        -->
-        <section class="list-section anim-rise delay-1" aria-labelledby="plan-label">
-          <div class="list-header">
-            <div class="list-label">
-              <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></svg>
-              <span id="plan-label">Plan</span>
-            </div>
-            <div class="list-links">
-              <button id="toggle-import" class="link-button" type="button" aria-expanded="false" aria-controls="import-panel">Import JSON</button>
-              <button id="add-block" class="link-button" type="button">
-                <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
-                Add
-              </button>
-            </div>
-          </div>
 
-          <div id="import-panel" class="inset-panel" hidden>
-            <p class="inset-help">Ask an AI for this exact format, paste it here, and it replaces the plan.</p>
-            <textarea
-              id="json-input"
-              class="text-input json-input"
-              rows="8"
-              spellcheck="false"
-              aria-label="Schedule JSON input"
-              placeholder='{"startTime":"09:00","blocks":[{"title":"Writing","durationMinutes":150}]}'
-            ></textarea>
-            <div class="inset-actions">
-              <button id="load-template" class="soft-button" type="button">Load template</button>
-              <button id="copy-template" class="soft-button" type="button">Copy template</button>
-              <button id="import-json" class="solid-button" type="button">Import</button>
-            </div>
-            <p id="json-message" class="form-message" role="status"></p>
-            <details class="schema-details">
-              <summary>Format rules</summary>
-              <ul>
-                <li><code>startTime</code>: 24-hour <code>HH:MM</code>.</li>
-                <li><code>blocks</code>: 1–50 items.</li>
-                <li><code>title</code>: text, up to 120 characters.</li>
-                <li><code>durationMinutes</code>: whole number from 1 to 1440.</li>
-              </ul>
-            </details>
-          </div>
-
-          <label class="start-row">
-            <span>Starts at</span>
-            <input id="plan-start" class="text-input time-input" type="time" required />
-          </label>
-
-          <div id="block-list" class="row-list"></div>
-          <p id="plan-empty" class="empty-note" hidden>No blocks planned</p>
-          <p id="plan-summary" class="plan-summary"></p>
-          <p id="planner-error" class="form-message is-error" role="alert"></p>
-          <div class="center-row">
-            <button id="start-plan" class="pill pill-secondary" type="button">Start plan</button>
-          </div>
-        </section>
-
-        <section class="list-section anim-rise delay-2" aria-labelledby="reminders-label">
+        <section class="list-section anim-rise delay-1" aria-labelledby="reminders-label">
           <div class="list-header">
             <div class="list-label">
               <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
@@ -179,6 +119,75 @@
       </section>
     </main>
 
+    <!--
+      The plan is tucked behind a corner button instead of sitting under the
+      presets: the setup screen should stay Focus Flow's "pick a time, go",
+      and the day plan is something you open on purpose. Fixed bottom-right
+      so it mirrors the clock and stays reachable on long pages.
+    -->
+    <button id="plan-button" class="plan-button" type="button" aria-expanded="false" aria-controls="plan-panel" aria-label="Open plan">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></svg>
+      <span id="plan-count" class="plan-count" hidden></span>
+    </button>
+
+    <aside id="plan-panel" class="plan-panel" aria-labelledby="plan-label" hidden>
+      <div class="list-header">
+        <div class="list-label">
+          <span id="plan-label">Plan</span>
+        </div>
+        <div class="list-links">
+          <button id="toggle-import" class="link-button" type="button" aria-expanded="false" aria-controls="import-panel">Import JSON</button>
+          <button id="add-block" class="link-button" type="button">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+            Add
+          </button>
+          <button id="close-plan" class="icon-button" type="button" aria-label="Close plan">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="import-panel" class="inset-panel" hidden>
+        <p class="inset-help">Ask an AI for this exact format, paste it here, and it replaces the plan.</p>
+        <textarea
+          id="json-input"
+          class="text-input json-input"
+          rows="8"
+          spellcheck="false"
+          aria-label="Schedule JSON input"
+          placeholder='{"startTime":"09:00","blocks":[{"title":"Writing","durationMinutes":150}]}'
+        ></textarea>
+        <div class="inset-actions">
+          <button id="load-template" class="soft-button" type="button">Load template</button>
+          <button id="copy-template" class="soft-button" type="button">Copy template</button>
+          <button id="import-json" class="solid-button" type="button">Import</button>
+        </div>
+        <p id="json-message" class="form-message" role="status"></p>
+        <details class="schema-details">
+          <summary>Format rules</summary>
+          <ul>
+            <li><code>startTime</code>: 24-hour <code>HH:MM</code>.</li>
+            <li><code>blocks</code>: 1–50 items.</li>
+            <li><code>title</code>: text, up to 120 characters.</li>
+            <li><code>durationMinutes</code>: whole number from 1 to 1440.</li>
+          </ul>
+        </details>
+      </div>
+
+      <label class="start-row">
+        <span>Starts at</span>
+        <input id="plan-start" class="text-input time-input" type="time" required />
+      </label>
+
+      <div id="block-list" class="row-list"></div>
+      <p id="plan-empty" class="empty-note" hidden>No blocks planned</p>
+      <p id="plan-summary" class="plan-summary"></p>
+      <p id="planner-error" class="form-message is-error" role="alert"></p>
+      <div class="center-row">
+        <button id="start-plan" class="pill pill-primary" type="button">Start plan</button>
+      </div>
+    </aside>
+
     <!-- Focus Flow's ReminderAlert: the timer is paused until "Done". -->
     <div id="reminder-alert" class="alert-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="reminder-alert-title" hidden>
       <div class="alert-card">
@@ -215,6 +224,6 @@
       </div>
     </template>
 
-    <script type="module" src="./src/app.js?v=2"></script>
+    <script type="module" src="./src/app.js?v=3"></script>
   </body>
 </html>

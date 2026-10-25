@@ -20,7 +20,7 @@ import {
   sessionBlocks,
   startTimeToTimestamp,
   startTimer,
-} from "./core.js?v=2"; // keep in step with the stamps in index.html
+} from "./core.js?v=3"; // keep in step with the stamps in index.html
 
 const byId = (id) => {
   const element = document.getElementById(id);
@@ -37,6 +37,10 @@ const elements = {
   presets: byId("presets"),
   customMinutes: byId("custom-minutes"),
   startQuick: byId("start-quick"),
+  planButton: byId("plan-button"),
+  planCount: byId("plan-count"),
+  planPanel: byId("plan-panel"),
+  closePlan: byId("close-plan"),
   toggleImport: byId("toggle-import"),
   importPanel: byId("import-panel"),
   jsonInput: byId("json-input"),
@@ -132,6 +136,7 @@ function setDigits(element, milliseconds) {
 function showSetup({ focusHeading = false } = {}) {
   elements.focusView.hidden = true;
   elements.setupView.hidden = false;
+  elements.planButton.hidden = false;
   elements.reminderAlert.hidden = true;
   stopTicker();
   renderSetup();
@@ -211,6 +216,11 @@ function renderPlanMeta() {
   });
 
   elements.planEmpty.hidden = state.blocks.length > 0;
+  elements.planCount.hidden = state.blocks.length === 0;
+  elements.planCount.textContent = String(state.blocks.length);
+  elements.planButton.setAttribute("aria-label", state.blocks.length
+    ? `Open plan, ${state.blocks.length} block${state.blocks.length === 1 ? "" : "s"}`
+    : "Open plan");
   if (valid) {
     const totalMinutes = state.blocks.reduce((sum, block) => sum + Number(block.durationMinutes), 0);
     elements.planSummary.textContent = `${formatDuration(totalMinutes)} · ends ${formatClock(timeline.at(-1).endAt)}`;
@@ -369,6 +379,10 @@ function startPlan() {
 function showFocus({ focusHeading = false } = {}) {
   elements.setupView.hidden = true;
   elements.focusView.hidden = false;
+  // The plan is edited before a session, not during one; the running view
+  // already shows its chips.
+  setPlanOpen(false);
+  elements.planButton.hidden = true;
   renderFocus();
   if (focusHeading) elements.currentTitle.focus();
 }
@@ -672,6 +686,18 @@ function stopReminderTone() {
   reminderToneContext = null;
 }
 
+/* ---------------- Plan panel ---------------- */
+
+function setPlanOpen(open, { returnFocus = false } = {}) {
+  elements.planPanel.hidden = !open;
+  elements.planButton.setAttribute("aria-expanded", String(open));
+  if (open) {
+    (elements.blockList.querySelector(".block-title") ?? elements.addBlock).focus();
+  } else if (returnFocus) {
+    elements.planButton.focus();
+  }
+}
+
 /* ---------------- JSON import ---------------- */
 
 function toggleImportPanel() {
@@ -745,6 +771,8 @@ elements.customMinutes.addEventListener("keydown", (event) => {
 });
 elements.startQuick.addEventListener("click", startQuick);
 
+elements.planButton.addEventListener("click", () => setPlanOpen(elements.planPanel.hidden));
+elements.closePlan.addEventListener("click", () => setPlanOpen(false, { returnFocus: true }));
 elements.toggleImport.addEventListener("click", toggleImportPanel);
 elements.loadTemplate.addEventListener("click", () => {
   elements.jsonInput.value = SCHEDULE_TEMPLATE_TEXT;
@@ -799,6 +827,10 @@ document.addEventListener("keydown", (event) => {
       event.preventDefault();
       dismissReminder();
     }
+    return;
+  }
+  if (event.key === "Escape" && !elements.planPanel.hidden) {
+    setPlanOpen(false, { returnFocus: true });
     return;
   }
   // Space to pause/resume comes from the very first Feb 2025 timer. Skip
