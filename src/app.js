@@ -20,7 +20,7 @@ import {
   sessionBlocks,
   startTimeToTimestamp,
   startTimer,
-} from "./core.js";
+} from "./core.js?v=2"; // keep in step with the stamps in index.html
 
 const byId = (id) => {
   const element = document.getElementById(id);
