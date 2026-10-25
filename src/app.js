@@ -1,17 +1,23 @@
 import {
+  QUICK_PRESETS,
   SCHEDULE_TEMPLATE_TEXT,
   buildTimeline,
-  defaultState,
+  draftSession,
+  dueReminder,
+  focusedTime,
   formatClock,
-  formatCountdown,
   formatDuration,
+  formatTimerDisplay,
+  isValidMinutes,
   loadState,
+  makeId,
   parseScheduleJSON,
   pauseTimer,
   reconcileTimer,
   remainingTime,
   resumeTimer,
   saveState,
+  sessionBlocks,
   startTimeToTimestamp,
   startTimer,
 } from "./core.js";
@@ -23,48 +29,64 @@ const byId = (id) => {
 };
 
 const elements = {
-  plannerView: byId("planner-view"),
-  plannerHeading: byId("planner-heading"),
-  focusView: byId("focus-view"),
-  planStart: byId("plan-start"),
-  blockList: byId("block-list"),
-  blockTemplate: byId("block-row-template"),
-  addBlock: byId("add-block"),
-  planTimeline: byId("plan-timeline"),
-  planTotal: byId("plan-total"),
-  startDay: byId("start-day"),
-  plannerError: byId("planner-error"),
+  clock: byId("clock"),
   soundToggle: byId("sound-toggle"),
-  backToPlan: byId("back-to-plan"),
-  focusCard: document.querySelector(".focus-card"),
-  focusStatus: byId("focus-status"),
-  focusPosition: byId("focus-position"),
-  currentTitle: byId("current-title"),
-  countdown: byId("countdown"),
-  timeNote: byId("time-note"),
-  progressBar: byId("progress-bar"),
-  timerToggle: byId("timer-toggle"),
-  finishBlock: byId("finish-block"),
-  focusControls: byId("focus-controls"),
-  completeActions: byId("complete-actions"),
-  focusTimeline: byId("focus-timeline"),
-  resetDay: byId("reset-day"),
-  newDay: byId("new-day"),
+  setupView: byId("setup-view"),
+  setupTitle: byId("setup-title"),
+  setupDigits: byId("setup-digits"),
+  presets: byId("presets"),
+  customMinutes: byId("custom-minutes"),
+  startQuick: byId("start-quick"),
+  toggleImport: byId("toggle-import"),
+  importPanel: byId("import-panel"),
   jsonInput: byId("json-input"),
   loadTemplate: byId("load-template"),
   copyTemplate: byId("copy-template"),
   importJson: byId("import-json"),
   jsonMessage: byId("json-message"),
+  addBlock: byId("add-block"),
+  planStart: byId("plan-start"),
+  blockList: byId("block-list"),
+  blockTemplate: byId("block-row-template"),
+  planEmpty: byId("plan-empty"),
+  planSummary: byId("plan-summary"),
+  plannerError: byId("planner-error"),
+  startPlan: byId("start-plan"),
+  addReminder: byId("add-reminder"),
+  reminderForm: byId("reminder-form"),
+  reminderLabel: byId("reminder-label"),
+  reminderInterval: byId("reminder-interval"),
+  cancelReminder: byId("cancel-reminder"),
+  reminderList: byId("reminder-list"),
+  remindersEmpty: byId("reminders-empty"),
+  focusView: byId("focus-view"),
+  currentTitle: byId("current-title"),
+  countdown: byId("countdown"),
+  statusLine: byId("status-line"),
+  timerToggle: byId("timer-toggle"),
+  finishBlock: byId("finish-block"),
+  stopSession: byId("stop-session"),
+  nextAction: byId("next-action"),
+  planChips: byId("plan-chips"),
+  reminderChips: byId("reminder-chips"),
+  reminderAlert: byId("reminder-alert"),
+  reminderAlertTitle: byId("reminder-alert-title"),
+  dismissReminder: byId("dismiss-reminder"),
 };
+
+const PRESET_LABELS = { 60: "1 hr", 90: "1.5 hr", 120: "2 hr" };
+const BLOCK_ERROR = "Every block needs a title and 1–1440 minutes.";
 
 let state = loadState(localStorage);
 let ticker = null;
 let audioContext = null;
+// The reminder tone gets its own context so dismissing can close() it and cut
+// the queued beeps instantly; the expiry chime context is long-lived.
+let reminderToneContext = null;
 let actionLockedUntil = 0;
-
-function makeId() {
-  return globalThis.crypto?.randomUUID?.() ?? `block-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+// Not persisted: the preset is a per-visit choice, and Focus Flow also opened
+// on 30 every time.
+let quickChoice = 30;
 
 function persist() {
   try {
@@ -75,12 +97,7 @@ function persist() {
 }
 
 function isValidBlock(block) {
-  return Boolean(
-    block.title?.trim() &&
-      Number.isInteger(Number(block.durationMinutes)) &&
-      Number(block.durationMinutes) >= 1 &&
-      Number(block.durationMinutes) <= 1_440,
-  );
+  return Boolean(block.title?.trim() && isValidMinutes(Number(block.durationMinutes)));
 }
 
 function validPlan() {
@@ -94,25 +111,67 @@ function getTimeline() {
   return buildTimeline(state.blocks, startTimeToTimestamp(state.planStartTime));
 }
 
-function showPlanner({ focusHeading = false } = {}) {
-  elements.focusView.hidden = true;
-  elements.plannerView.hidden = false;
-  stopTicker();
-  renderPlanner();
-  document.title = "Plan the day — Work Timer";
-  if (focusHeading) elements.plannerHeading.focus();
+function isQuick() {
+  return state.session.quickMinutes != null;
 }
 
-function showFocus({ focusHeading = false } = {}) {
-  elements.plannerView.hidden = true;
-  elements.focusView.hidden = false;
-  renderFocus();
-  if (focusHeading) elements.currentTitle.focus();
+function currentBlock() {
+  return sessionBlocks(state)[state.session.currentIndex];
+}
+
+// One renderer for both digit spans so the setup preview and the live
+// countdown can never disagree on format or size class.
+function setDigits(element, milliseconds) {
+  const text = formatTimerDisplay(milliseconds);
+  if (element.textContent !== text) element.textContent = text;
+  element.dataset.chars = String(text.length);
+}
+
+/* ---------------- Setup view ---------------- */
+
+function showSetup({ focusHeading = false } = {}) {
+  elements.focusView.hidden = true;
+  elements.setupView.hidden = false;
+  elements.reminderAlert.hidden = true;
+  stopTicker();
+  renderSetup();
+  document.title = "Focus";
+  if (focusHeading) elements.setupTitle.focus();
+}
+
+function renderSetup() {
+  renderSoundToggle();
+  renderPresets();
+  renderPlanner();
+  renderReminders();
+}
+
+function renderPresets() {
+  const customValue = Number(elements.customMinutes.value);
+  const customActive = elements.customMinutes.value !== "" && isValidMinutes(customValue);
+  // Built once and then only re-classed: rebuilding on every click would
+  // throw away the focused button and strand keyboard users on <body>.
+  if (!elements.presets.childElementCount) {
+    elements.presets.append(...QUICK_PRESETS.map((minutes) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pill";
+      button.dataset.minutes = String(minutes);
+      button.textContent = PRESET_LABELS[minutes] ?? `${minutes} min`;
+      return button;
+    }));
+  }
+  for (const button of elements.presets.children) {
+    const selected = !customActive && quickChoice === Number(button.dataset.minutes);
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  setDigits(elements.setupDigits, quickChoice * 60_000);
+  elements.startQuick.disabled = !isValidMinutes(quickChoice);
 }
 
 function renderPlanner() {
   elements.planStart.value = state.planStartTime;
-  elements.soundToggle.checked = state.soundEnabled;
   elements.blockList.replaceChildren();
 
   state.blocks.forEach((block, index) => {
@@ -120,67 +179,46 @@ function renderPlanner() {
     const row = fragment.querySelector(".block-row");
     const title = fragment.querySelector(".block-title");
     const duration = fragment.querySelector(".block-duration");
-    const up = fragment.querySelector(".move-up");
-    const down = fragment.querySelector(".move-down");
 
     row.dataset.id = block.id;
-    fragment.querySelector(".block-number").textContent = String(index + 1).padStart(2, "0");
     title.value = block.title;
-    title.setAttribute("aria-label", `Work block ${index + 1} title`);
-    title.setAttribute("aria-invalid", block.title?.trim() ? "false" : "true");
+    title.setAttribute("aria-label", `Block ${index + 1} title`);
+    title.setAttribute("aria-invalid", String(!block.title?.trim()));
     duration.value = block.durationMinutes || "";
-    duration.setAttribute("aria-label", `Work block ${index + 1} duration in minutes`);
-    duration.setAttribute("aria-invalid", isValidBlock({ ...block, title: "valid" }) ? "false" : "true");
-    up.disabled = index === 0;
-    down.disabled = index === state.blocks.length - 1;
+    duration.setAttribute("aria-label", `Block ${index + 1} minutes`);
+    duration.setAttribute("aria-invalid", String(!isValidMinutes(Number(block.durationMinutes))));
+    fragment.querySelector(".move-up").disabled = index === 0;
+    fragment.querySelector(".move-down").disabled = index === state.blocks.length - 1;
 
     elements.blockList.append(fragment);
   });
 
-  renderPlanTimeline();
-  elements.startDay.disabled = !validPlan();
-  elements.plannerError.textContent = validPlan() ? "" : "Every block needs a title and 1–1440 minutes.";
+  renderPlanMeta();
 }
 
-function renderPlanTimeline() {
-  elements.planTimeline.replaceChildren();
+// Typing in a row must not rebuild the rows (that would steal focus and the
+// caret mid-word), so the times and summary that react to every keystroke
+// live here, apart from renderPlanner's structural rebuild.
+function renderPlanMeta() {
   const timeline = getTimeline();
+  const valid = timeline.length > 0;
+  const rows = elements.blockList.querySelectorAll(".block-row");
 
-  if (!timeline.length) {
-    const empty = document.createElement("li");
-    empty.className = "timeline-item";
-    empty.textContent = "Add a valid block to see the timeline.";
-    elements.planTimeline.append(empty);
-    elements.planTotal.textContent = "";
-    return;
-  }
-
-  timeline.forEach((item) => {
-    const row = document.createElement("li");
-    row.className = "timeline-item";
-
-    const time = document.createElement("span");
-    time.className = "timeline-time";
-    time.textContent = `${formatClock(item.startAt)}–${formatClock(item.endAt)}`;
-
-    const dot = document.createElement("span");
-    dot.className = "timeline-dot";
-    dot.setAttribute("aria-hidden", "true");
-
-    const title = document.createElement("span");
-    title.className = "timeline-title";
-    title.textContent = item.title;
-
-    const duration = document.createElement("span");
-    duration.className = "timeline-duration";
-    duration.textContent = formatDuration(item.durationMinutes);
-
-    row.append(time, dot, title, duration);
-    elements.planTimeline.append(row);
+  rows.forEach((row, index) => {
+    const meta = row.querySelector(".block-meta");
+    const item = timeline[index];
+    meta.textContent = item ? `${formatClock(item.startAt)}–${formatClock(item.endAt)}` : "—";
   });
 
-  const totalMinutes = state.blocks.reduce((sum, block) => sum + Number(block.durationMinutes), 0);
-  elements.planTotal.textContent = `${formatDuration(totalMinutes)} · ends ${formatClock(timeline.at(-1).endAt)}`;
+  elements.planEmpty.hidden = state.blocks.length > 0;
+  if (valid) {
+    const totalMinutes = state.blocks.reduce((sum, block) => sum + Number(block.durationMinutes), 0);
+    elements.planSummary.textContent = `${formatDuration(totalMinutes)} · ends ${formatClock(timeline.at(-1).endAt)}`;
+  } else {
+    elements.planSummary.textContent = "";
+  }
+  elements.startPlan.disabled = !valid;
+  elements.plannerError.textContent = state.blocks.length && !valid ? BLOCK_ERROR : "";
 }
 
 function updateBlockFromInput(target) {
@@ -188,15 +226,16 @@ function updateBlockFromInput(target) {
   const block = state.blocks.find((item) => item.id === row?.dataset.id);
   if (!block) return;
 
-  if (target.matches(".block-title")) block.title = target.value;
-  if (target.matches(".block-duration")) block.durationMinutes = Number(target.value);
+  if (target.matches(".block-title")) {
+    block.title = target.value;
+    target.setAttribute("aria-invalid", String(!target.value.trim()));
+  }
+  if (target.matches(".block-duration")) {
+    block.durationMinutes = Number(target.value);
+    target.setAttribute("aria-invalid", String(!isValidMinutes(Number(target.value))));
+  }
   persist();
-  renderPlanTimeline();
-  elements.startDay.disabled = !validPlan();
-  elements.plannerError.textContent = validPlan() ? "" : "Every block needs a title and 1–1440 minutes.";
-  target.setAttribute("aria-invalid", target.matches(".block-title")
-    ? String(!target.value.trim())
-    : String(!isValidBlock({ title: "valid", durationMinutes: Number(target.value) })));
+  renderPlanMeta();
 }
 
 function handleBlockAction(target) {
@@ -220,6 +259,8 @@ function handleBlockAction(target) {
   persist();
   renderPlanner();
 
+  // Keep keyboard users on the thing they just moved (or its neighbour after
+  // a removal) instead of dumping focus to <body> after the rebuild.
   const focusId = removing ? state.blocks[Math.min(index, state.blocks.length - 1)]?.id : originalId;
   const focusRow = [...elements.blockList.querySelectorAll(".block-row")]
     .find((candidate) => candidate.dataset.id === focusId);
@@ -229,56 +270,130 @@ function handleBlockAction(target) {
   else elements.addBlock.focus();
 }
 
-function currentBlock() {
-  return state.blocks[state.session.currentIndex];
+function renderReminders() {
+  elements.reminderList.replaceChildren(...state.reminders.map((reminder) => {
+    const row = document.createElement("div");
+    row.className = "row-card";
+    row.dataset.id = reminder.id;
+
+    const main = document.createElement("div");
+    main.className = "row-main";
+    const label = document.createElement("span");
+    label.className = "row-title";
+    label.textContent = reminder.label;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = `Every ${reminder.intervalMinutes} min`;
+    main.append(label, meta);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-button remove-reminder";
+    remove.setAttribute("aria-label", `Remove reminder ${reminder.label}`);
+    remove.innerHTML = '<svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>';
+
+    row.append(main, remove);
+    return row;
+  }));
+  elements.remindersEmpty.hidden = state.reminders.length > 0 || !elements.reminderForm.hidden;
 }
 
-function startDay() {
-  if (!validPlan()) {
-    elements.plannerError.textContent = "Fix the invalid work blocks before starting.";
+function openReminderForm(open) {
+  elements.reminderForm.hidden = !open;
+  elements.addReminder.hidden = open;
+  if (open) {
+    elements.reminderLabel.value = "";
+    elements.reminderInterval.value = "30";
+    elements.reminderLabel.focus();
+  }
+  renderReminders();
+}
+
+function submitReminder(event) {
+  event.preventDefault();
+  const label = elements.reminderLabel.value.trim();
+  const intervalMinutes = Number(elements.reminderInterval.value);
+  if (!label) {
+    elements.reminderLabel.focus();
     return;
   }
-  state.blocks = state.blocks.map((block) => ({ ...block, title: block.title.trim(), status: "pending" }));
+  if (!isValidMinutes(intervalMinutes)) {
+    elements.reminderInterval.setAttribute("aria-invalid", "true");
+    elements.reminderInterval.focus();
+    return;
+  }
+  elements.reminderInterval.removeAttribute("aria-invalid");
+  state.reminders.push({ id: makeId(), label: label.slice(0, 80), intervalMinutes });
+  persist();
+  openReminderForm(false);
+  elements.addReminder.focus();
+}
+
+/* ---------------- Starting sessions ---------------- */
+
+function startQuick() {
+  if (!isValidMinutes(quickChoice)) return;
+  // Focus Flow's "Start Focus" started counting immediately; no extra
+  // "ready" step for a one-off session.
   state.session = {
-    phase: "ready",
-    currentIndex: 0,
-    endAt: null,
-    remainingMs: state.blocks[0].durationMinutes * 60_000,
-    soundPlayed: false,
+    ...draftSession(),
+    phase: "running",
+    quickMinutes: quickChoice,
+    ...startTimer(quickChoice * 60_000),
   };
+  unlockAudio();
   persist();
   showFocus({ focusHeading: true });
 }
 
-function timerStatusLabel(phase) {
-  return {
-    ready: "READY",
-    paused: "PAUSED",
-    running: "FOCUSING",
-    expired: "TIME’S UP",
-    completed: "COMPLETE",
-  }[phase] ?? "READY";
+function startPlan() {
+  if (!validPlan()) {
+    elements.plannerError.textContent = BLOCK_ERROR;
+    return;
+  }
+  state.blocks = state.blocks.map((block) => ({ ...block, title: block.title.trim(), status: "pending" }));
+  // Pressing "Start plan" is the commitment, so the first block runs right
+  // away like Start Focus. Later blocks still wait in "ready" after a
+  // done-early, so you choose when the next one starts.
+  state.session = {
+    ...draftSession(),
+    ...startTimer(state.blocks[0].durationMinutes * 60_000),
+  };
+  unlockAudio();
+  persist();
+  showFocus({ focusHeading: true });
+}
+
+/* ---------------- Focus view ---------------- */
+
+function showFocus({ focusHeading = false } = {}) {
+  elements.setupView.hidden = true;
+  elements.focusView.hidden = false;
+  renderFocus();
+  if (focusHeading) elements.currentTitle.focus();
 }
 
 function renderFocus() {
   const session = state.session;
+  const blocks = sessionBlocks(state);
+  const quick = isQuick();
   const completed = session.phase === "completed";
-  elements.soundToggle.checked = state.soundEnabled;
-  elements.focusCard.classList.toggle("is-expired", session.phase === "expired");
-  elements.focusCard.classList.toggle("is-complete", completed);
-  elements.focusStatus.className = `status-pill is-${session.phase}`;
-  const statusLabel = timerStatusLabel(session.phase);
-  if (elements.focusStatus.textContent !== statusLabel) elements.focusStatus.textContent = statusLabel;
-  elements.focusControls.hidden = completed;
-  elements.completeActions.hidden = !completed;
+  const expired = session.phase === "expired";
+  renderSoundToggle();
+
+  elements.timerToggle.hidden = completed || expired;
+  elements.finishBlock.hidden = completed || expired;
+  elements.nextAction.hidden = !expired;
+  elements.countdown.classList.toggle("is-muted", completed || expired);
 
   if (completed) {
-    elements.focusPosition.textContent = `${state.blocks.length} / ${state.blocks.length}`;
-    elements.currentTitle.textContent = "Day complete.";
-    elements.countdown.textContent = "DONE";
-    elements.timeNote.textContent = `${state.blocks.length} work block${state.blocks.length === 1 ? "" : "s"} finished.`;
-    elements.progressBar.style.width = "100%";
-    document.title = "Done — Work Timer";
+    elements.currentTitle.textContent = quick ? "Focus" : "Plan done";
+    setDigits(elements.countdown, 0);
+    elements.statusLine.textContent = quick
+      ? "Session complete"
+      : `${blocks.length} block${blocks.length === 1 ? "" : "s"} finished`;
+    elements.stopSession.setAttribute("aria-label", "Back to start");
+    document.title = "Done — Focus";
   } else {
     const block = currentBlock();
     if (!block) {
@@ -289,114 +404,148 @@ function renderFocus() {
     }
 
     const remaining = remainingTime(session);
-    const total = block.durationMinutes * 60_000;
-    const progress = Math.min(100, Math.max(0, ((total - remaining) / total) * 100));
-    elements.focusPosition.textContent = `${session.currentIndex + 1} / ${state.blocks.length}`;
-    elements.currentTitle.textContent = block.title;
-    elements.countdown.textContent = formatCountdown(remaining);
-    elements.progressBar.style.width = `${progress}%`;
+    const position = quick ? "" : ` · ${session.currentIndex + 1} of ${blocks.length}`;
+    elements.currentTitle.textContent = `${block.title}${position}`;
+    setDigits(elements.countdown, remaining);
+    elements.stopSession.setAttribute("aria-label", "Stop and go back");
+
+    const next = blocks[session.currentIndex + 1];
+    const thenNext = next ? ` · then ${next.title}` : "";
+    const paused = session.phase !== "running";
+    elements.timerToggle.classList.toggle("is-paused", paused);
+    elements.timerToggle.setAttribute("aria-label", paused ? (session.phase === "ready" ? "Start" : "Resume") : "Pause");
 
     if (session.phase === "running") {
-      elements.timeNote.textContent = `Ends at ${formatClock(session.endAt)}. Stay on this until then.`;
-      elements.timerToggle.textContent = "Pause";
-      elements.finishBlock.textContent = "Done early";
-      elements.finishBlock.hidden = false;
-      document.title = `${formatCountdown(remaining)} · ${block.title}`;
-    } else if (session.phase === "expired") {
-      const isLast = session.currentIndex === state.blocks.length - 1;
-      elements.timeNote.textContent = "The deadline arrived. Close this block and move.";
-      elements.timerToggle.textContent = isLast ? "Finish the day" : "Start next block";
-      elements.finishBlock.hidden = true;
+      elements.statusLine.textContent = `Ends ${formatClock(session.endAt)}${thenNext}`;
+      document.title = `${formatTimerDisplay(remaining)} · ${block.title}`;
+    } else if (expired) {
+      elements.statusLine.textContent = "Time’s up";
+      elements.nextAction.textContent = next ? `Start ${next.title}` : quick ? "Done" : "Finish plan";
       document.title = `Time’s up · ${block.title}`;
+    } else if (session.phase === "paused") {
+      elements.statusLine.textContent = `Paused${thenNext}`;
+      document.title = `Paused · ${block.title}`;
     } else {
-      elements.timeNote.textContent = `${formatDuration(block.durationMinutes)} committed to this block.`;
-      elements.timerToggle.textContent = session.phase === "paused" ? "Resume" : "Start timer";
-      elements.finishBlock.textContent = "Done early";
-      elements.finishBlock.hidden = false;
-      document.title = `${block.title} — Work Timer`;
+      elements.statusLine.textContent = `Ready · ${formatDuration(block.durationMinutes)}`;
+      document.title = `${block.title} — Focus`;
     }
   }
 
-  renderFocusTimeline();
+  renderChips(blocks, quick, completed);
+  renderAlert();
   if (session.phase === "running") ensureTicker();
   else stopTicker();
 }
 
-function renderFocusTimeline() {
-  elements.focusTimeline.replaceChildren();
-  state.blocks.forEach((block, index) => {
-    const row = document.createElement("li");
-    row.className = "focus-timeline-item";
-    if (index === state.session.currentIndex && state.session.phase !== "completed") row.classList.add("is-current");
-    if (block.status === "complete") row.classList.add("is-done");
-
-    const marker = document.createElement("span");
-    marker.className = "focus-item-marker";
-    marker.textContent = block.status === "complete" ? "✓" : String(index + 1).padStart(2, "0");
-
-    const title = document.createElement("span");
-    title.className = "focus-item-title";
-    title.textContent = block.title;
-
-    const duration = document.createElement("span");
-    duration.className = "focus-item-duration";
-    duration.textContent = formatDuration(block.durationMinutes);
-
-    row.append(marker, title, duration);
-    elements.focusTimeline.append(row);
-  });
+function renderChips(blocks, quick, completed) {
+  // Quick sessions are a single block, so a one-chip "plan" would be noise.
+  elements.planChips.replaceChildren(...(quick ? [] : blocks.map((block, index) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    if (block.status === "complete") chip.classList.add("is-done");
+    else if (!completed && index === state.session.currentIndex) chip.classList.add("is-current");
+    chip.textContent = `${block.title} · ${formatDuration(block.durationMinutes)}`;
+    return chip;
+  })));
+  elements.reminderChips.replaceChildren(...(completed ? [] : state.reminders.map((reminder) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = `${reminder.label} · ${reminder.intervalMinutes}m`;
+    return chip;
+  })));
 }
 
+function renderAlert() {
+  const reminder = state.reminders.find((item) => item.id === state.session.activeReminderId);
+  const wasHidden = elements.reminderAlert.hidden;
+  elements.reminderAlert.hidden = !reminder;
+  if (!reminder) return;
+  elements.reminderAlertTitle.textContent = reminder.label;
+  if (wasHidden) elements.dismissReminder.focus();
+}
+
+/* ---------------- Timer transitions ---------------- */
+
 function toggleTimer() {
-  if (state.session.phase === "running") {
-    state.session = { ...state.session, ...pauseTimer(state.session), soundPlayed: false };
-  } else if (state.session.phase === "expired") {
-    advanceBlock(true);
-    return;
-  } else {
-    const timer = state.session.phase === "paused"
-      ? resumeTimer(state.session)
-      : startTimer(state.session.remainingMs ?? currentBlock().durationMinutes * 60_000);
-    state.session = { ...state.session, ...timer, soundPlayed: false };
+  const session = state.session;
+  if (session.activeReminderId) return;
+  if (session.phase === "running") {
+    state.session = { ...session, ...pauseTimer(session), soundPlayed: false };
+  } else if (session.phase === "ready" || session.phase === "paused") {
+    const timer = session.phase === "paused"
+      ? resumeTimer(session)
+      : startTimer(session.remainingMs ?? currentBlock().durationMinutes * 60_000);
+    state.session = { ...session, ...timer, soundPlayed: false };
     unlockAudio();
+  } else {
+    return;
   }
   persist();
   renderFocus();
 }
 
 function advanceBlock(startNext = false) {
-  const index = state.session.currentIndex;
-  if (state.blocks[index]) state.blocks[index].status = "complete";
-  const nextIndex = state.blocks.findIndex((block, candidateIndex) => candidateIndex > index && block.status !== "complete");
+  const session = state.session;
+  const blocks = sessionBlocks(state);
+  const index = session.currentIndex;
+  const block = blocks[index];
+  if (!block) return;
+
+  // Bank what was really focused on this block (less than the full length on
+  // done-early) so reminder timing carries across the whole plan.
+  const focusedBeforeMs = focusedTime(session, block.durationMinutes * 60_000);
+  if (!isQuick()) state.blocks[index].status = "complete";
+  const nextIndex = isQuick()
+    ? -1
+    : state.blocks.findIndex((item, candidateIndex) => candidateIndex > index && item.status !== "complete");
+
+  const base = {
+    ...session,
+    focusedBeforeMs,
+    reminderCheckedMs: Math.max(session.reminderCheckedMs ?? 0, focusedBeforeMs),
+    activeReminderId: null,
+  };
 
   if (nextIndex === -1) {
-    state.session = {
-      phase: "completed",
-      currentIndex: state.blocks.length,
-      endAt: null,
-      remainingMs: 0,
-      soundPlayed: true,
-    };
+    state.session = { ...base, phase: "completed", currentIndex: blocks.length, endAt: null, remainingMs: 0, soundPlayed: true };
   } else {
     const remainingMs = state.blocks[nextIndex].durationMinutes * 60_000;
-    state.session = {
-      phase: "ready",
-      currentIndex: nextIndex,
-      endAt: null,
-      remainingMs,
-      soundPlayed: false,
-    };
+    state.session = { ...base, phase: "ready", currentIndex: nextIndex, endAt: null, remainingMs, soundPlayed: false };
     if (startNext) {
-      state.session = { ...state.session, ...startTimer(remainingMs), soundPlayed: false };
+      state.session = { ...state.session, ...startTimer(remainingMs) };
       unlockAudio();
     }
   }
 
   persist();
   renderFocus();
-  if (state.session.phase === "completed") elements.currentTitle.focus();
+  if (state.session.phase === "completed") elements.stopSession.focus();
 }
 
+function stopSession() {
+  const session = state.session;
+  if (session.phase !== "completed" && !window.confirm("Stop this session and go back?")) return;
+  stopReminderTone();
+  state.blocks = state.blocks.map((block) => ({ ...block, status: "pending" }));
+  state.session = draftSession();
+  persist();
+  showSetup({ focusHeading: true });
+}
+
+function dismissReminder() {
+  if (!state.session.activeReminderId) return;
+  stopReminderTone();
+  // Firing paused the timer, so Done resumes it, as in Focus Flow. Resuming
+  // from remainingMs (and not from a stale endAt) means time spent looking at
+  // the alert is not charged to the block.
+  state.session = { ...state.session, ...resumeTimer(state.session), activeReminderId: null, soundPlayed: false };
+  persist();
+  renderFocus();
+  elements.timerToggle.focus();
+}
+
+// Double-clicks on Done/Next used to skip a whole block; a short lock after
+// any transition keeps one intent to one transition.
 function runGuardedAction(action) {
   const now = Date.now();
   if (now < actionLockedUntil) return;
@@ -406,14 +555,27 @@ function runGuardedAction(action) {
 
 function tick() {
   if (state.session.phase !== "running") return;
+  const block = currentBlock();
+  if (!block) return;
   const reconciled = reconcileTimer(state.session);
-  const expiredNow = reconciled.phase === "expired";
   state.session = { ...state.session, ...reconciled };
+  const focused = focusedTime(state.session, block.durationMinutes * 60_000);
 
-  if (expiredNow) {
+  if (reconciled.phase === "expired") {
+    // Expiry already demands attention; a reminder due in the same instant
+    // would stack a second alert on top, so it is consumed silently.
+    state.session.reminderCheckedMs = focused;
     if (!state.session.soundPlayed) playChime();
     state.session.soundPlayed = true;
     persist();
+  } else {
+    const due = dueReminder(state.reminders, state.session.reminderCheckedMs ?? 0, focused);
+    state.session.reminderCheckedMs = focused;
+    if (due) {
+      state.session = { ...state.session, ...pauseTimer(state.session), activeReminderId: due.id };
+      playReminderTone();
+      persist();
+    }
   }
   renderFocus();
 }
@@ -427,6 +589,13 @@ function stopTicker() {
   if (!ticker) return;
   window.clearInterval(ticker);
   ticker = null;
+}
+
+/* ---------------- Sound ---------------- */
+
+function renderSoundToggle() {
+  elements.soundToggle.textContent = state.soundEnabled ? "Sound on" : "Sound off";
+  elements.soundToggle.setAttribute("aria-pressed", String(state.soundEnabled));
 }
 
 function unlockAudio() {
@@ -463,35 +632,65 @@ function playChime() {
   }
 }
 
-function returnToPlan() {
-  const active = ["running", "paused", "expired"].includes(state.session.phase);
-  if (active && !window.confirm("Stop this focus session and return to the plan?")) return;
-  state.blocks = state.blocks.map((block) => ({ ...block, status: "pending" }));
-  state.session = { phase: "draft", currentIndex: 0, endAt: null, remainingMs: null, soundPlayed: false };
-  persist();
-  showPlanner({ focusHeading: true });
+// Focus Flow's reminder sound: an Apple-like tri-tone repeated every 2s for
+// ~40s, cut off by Done. It is deliberately persistent: a reminder you can
+// miss by not looking at the tab is not a reminder.
+function playReminderTone() {
+  if (!state.soundEnabled) return;
+  stopReminderTone();
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  try {
+    const context = new AudioContext();
+    reminderToneContext = context;
+    const beep = (time, frequency) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.3, time);
+      gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(time);
+      oscillator.stop(time + 0.3);
+    };
+    const now = context.currentTime;
+    for (let index = 0; index < 20; index += 1) {
+      const base = now + index * 2;
+      beep(base, 880);
+      beep(base + 0.35, 1046);
+      beep(base + 0.7, 1174);
+    }
+  } catch {
+    reminderToneContext = null;
+  }
 }
 
-function resetEverything() {
-  if (!window.confirm("Reset the whole schedule and timer?")) return;
-  state = defaultState();
-  persist();
-  showPlanner({ focusHeading: true });
+function stopReminderTone() {
+  if (!reminderToneContext) return;
+  reminderToneContext.close().catch(() => {});
+  reminderToneContext = null;
+}
+
+/* ---------------- JSON import ---------------- */
+
+function toggleImportPanel() {
+  const open = elements.importPanel.hidden;
+  elements.importPanel.hidden = !open;
+  elements.toggleImport.setAttribute("aria-expanded", String(open));
+  if (open) elements.jsonInput.focus();
 }
 
 function importSchedule() {
   elements.jsonMessage.classList.remove("is-error");
   try {
     const imported = parseScheduleJSON(elements.jsonInput.value);
-    const active = state.session.phase !== "draft";
-    if (active && !window.confirm("Replace the current plan and stop its timer?")) return;
-
     state.planStartTime = imported.startTime;
     state.blocks = imported.blocks;
-    state.session = { phase: "draft", currentIndex: 0, endAt: null, remainingMs: null, soundPlayed: false };
+    state.session = draftSession();
     persist();
-    showPlanner();
-    elements.jsonMessage.textContent = `Imported ${imported.blocks.length} work block${imported.blocks.length === 1 ? "" : "s"}.`;
+    renderPlanner();
+    elements.jsonMessage.textContent = `Imported ${imported.blocks.length} block${imported.blocks.length === 1 ? "" : "s"}.`;
   } catch (error) {
     elements.jsonMessage.classList.add("is-error");
     elements.jsonMessage.textContent = error instanceof Error ? error.message : "Could not import that schedule.";
@@ -512,13 +711,54 @@ async function copyTemplate() {
   }
 }
 
+/* ---------------- Clock ---------------- */
+
+function renderClock() {
+  elements.clock.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/* ---------------- Wiring ---------------- */
+
+elements.clock.addEventListener("click", () => elements.clock.classList.toggle("is-dimmed"));
+elements.soundToggle.addEventListener("click", () => {
+  state.soundEnabled = !state.soundEnabled;
+  if (state.soundEnabled) unlockAudio();
+  else stopReminderTone();
+  persist();
+  renderSoundToggle();
+});
+
+elements.presets.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-minutes]");
+  if (!button) return;
+  quickChoice = Number(button.dataset.minutes);
+  elements.customMinutes.value = "";
+  renderPresets();
+});
+elements.customMinutes.addEventListener("input", () => {
+  const minutes = Number(elements.customMinutes.value);
+  if (elements.customMinutes.value !== "" && isValidMinutes(minutes)) quickChoice = minutes;
+  renderPresets();
+});
+elements.customMinutes.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") startQuick();
+});
+elements.startQuick.addEventListener("click", startQuick);
+
+elements.toggleImport.addEventListener("click", toggleImportPanel);
+elements.loadTemplate.addEventListener("click", () => {
+  elements.jsonInput.value = SCHEDULE_TEMPLATE_TEXT;
+  elements.jsonMessage.classList.remove("is-error");
+  elements.jsonMessage.textContent = "Template loaded. Edit it, then import.";
+});
+elements.copyTemplate.addEventListener("click", copyTemplate);
+elements.importJson.addEventListener("click", importSchedule);
+
 elements.planStart.addEventListener("input", () => {
   state.planStartTime = elements.planStart.value;
   persist();
-  renderPlanTimeline();
-  elements.startDay.disabled = !validPlan();
+  renderPlanMeta();
 });
-
 elements.blockList.addEventListener("input", (event) => updateBlockFromInput(event.target));
 elements.blockList.addEventListener("click", (event) => handleBlockAction(event.target));
 elements.addBlock.addEventListener("click", () => {
@@ -527,32 +767,60 @@ elements.addBlock.addEventListener("click", () => {
   renderPlanner();
   elements.blockList.querySelector(".block-row:last-child .block-title")?.focus();
 });
-elements.startDay.addEventListener("click", startDay);
+elements.startPlan.addEventListener("click", startPlan);
+
+elements.addReminder.addEventListener("click", () => openReminderForm(true));
+elements.cancelReminder.addEventListener("click", () => {
+  openReminderForm(false);
+  elements.addReminder.focus();
+});
+elements.reminderForm.addEventListener("submit", submitReminder);
+elements.reminderList.addEventListener("click", (event) => {
+  const remove = event.target.closest(".remove-reminder");
+  if (!remove) return;
+  const id = remove.closest(".row-card")?.dataset.id;
+  state.reminders = state.reminders.filter((item) => item.id !== id);
+  persist();
+  renderReminders();
+  elements.addReminder.focus();
+});
+
 elements.timerToggle.addEventListener("click", () => runGuardedAction(toggleTimer));
 elements.finishBlock.addEventListener("click", () => runGuardedAction(() => advanceBlock(false)));
-elements.backToPlan.addEventListener("click", returnToPlan);
-elements.newDay.addEventListener("click", returnToPlan);
-elements.resetDay.addEventListener("click", resetEverything);
-elements.soundToggle.addEventListener("change", () => {
-  state.soundEnabled = elements.soundToggle.checked;
-  if (state.soundEnabled) unlockAudio();
-  persist();
+elements.nextAction.addEventListener("click", () => runGuardedAction(() => advanceBlock(true)));
+elements.stopSession.addEventListener("click", stopSession);
+elements.dismissReminder.addEventListener("click", dismissReminder);
+
+document.addEventListener("keydown", (event) => {
+  if (!elements.reminderAlert.hidden) {
+    // The alert is modal: Escape or Enter means "Done", and nothing else
+    // should reach the timer underneath it.
+    if (event.key === "Escape" || event.key === "Enter") {
+      event.preventDefault();
+      dismissReminder();
+    }
+    return;
+  }
+  // Space to pause/resume comes from the very first Feb 2025 timer. Skip
+  // when typing, and on buttons where Space already means "click this".
+  if (event.code !== "Space" || elements.focusView.hidden) return;
+  if (event.target.closest?.("input, textarea, button, summary")) return;
+  event.preventDefault();
+  runGuardedAction(toggleTimer);
 });
-elements.loadTemplate.addEventListener("click", () => {
-  elements.jsonInput.value = SCHEDULE_TEMPLATE_TEXT;
-  elements.jsonMessage.textContent = "Template loaded. Edit it, then import.";
-});
-elements.copyTemplate.addEventListener("click", copyTemplate);
-elements.importJson.addEventListener("click", importSchedule);
+
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) tick();
 });
 window.addEventListener("beforeunload", persist);
+
+renderClock();
+window.setInterval(renderClock, 1_000);
 
 if (state.session.phase === "running") {
   state.session = { ...state.session, ...reconcileTimer(state.session) };
   persist();
 }
 
-if (state.session.phase === "draft") showPlanner();
+if (state.session.phase === "draft") showSetup();
 else showFocus();
