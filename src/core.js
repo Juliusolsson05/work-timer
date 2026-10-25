@@ -11,7 +11,7 @@ export const SCHEDULE_TEMPLATE = Object.freeze({
 
 export const SCHEDULE_TEMPLATE_TEXT = JSON.stringify(SCHEDULE_TEMPLATE, null, 2);
 
-function makeId() {
+export function makeId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `block-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -64,6 +64,85 @@ export function buildTimeline(blocks, startAt) {
     cursor = item.endAt;
     return item;
   });
+}
+
+// One-off "Start Focus" sessions borrow the plan's session machinery (phases,
+// timestamp countdown, restore-after-sleep) without touching state.blocks:
+// picking a 25 min preset must never wipe the day the user planned. The
+// session carries quickMinutes and every consumer asks sessionBlocks() which
+// list is running instead of reading state.blocks directly.
+export const QUICK_PRESETS = Object.freeze([15, 25, 30, 45, 60, 90, 120]);
+export const QUICK_BLOCK_ID = "quick-focus";
+
+export function isValidMinutes(value) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 1_440;
+}
+
+export function sessionBlocks(state) {
+  const minutes = state.session?.quickMinutes;
+  if (isValidMinutes(minutes)) {
+    return [{ id: QUICK_BLOCK_ID, title: "Focus", durationMinutes: minutes, status: state.session.phase === "completed" ? "complete" : "pending" }];
+  }
+  return state.blocks;
+}
+
+// Every place that drops back to setup used to hand-roll this object; one
+// constructor keeps the reminder/quick fields from leaking between sessions.
+export function draftSession() {
+  return {
+    phase: "draft",
+    currentIndex: 0,
+    endAt: null,
+    remainingMs: null,
+    soundPlayed: false,
+    quickMinutes: null,
+    focusedBeforeMs: 0,
+    reminderCheckedMs: 0,
+    activeReminderId: null,
+  };
+}
+
+// Focused time across the WHOLE session, not the current block. Reminders like
+// "stretch every 30 min" are about how long you have been sitting, and a plan
+// of 25 min blocks would never reach 30 on a per-block clock. Paused time is
+// excluded because remainingTime() freezes while paused.
+export function focusedTime(session, blockDurationMs, now = Date.now()) {
+  if (["draft", "completed"].includes(session.phase)) return session.focusedBeforeMs ?? 0;
+  const spent = Math.max(0, blockDurationMs - remainingTime(session, now));
+  return (session.focusedBeforeMs ?? 0) + spent;
+}
+
+// Window check instead of Focus Flow's `elapsed % interval === 0`: a laptop
+// asleep across the 30:00 mark wakes at 41:12 and that exact second never
+// happens, so the reminder silently vanished. Anything due in (fromMs, toMs]
+// fires once; when several are due, the one that came due first wins.
+export function dueReminder(reminders, fromMs, toMs) {
+  let due = null;
+  let dueAt = Infinity;
+  for (const reminder of reminders ?? []) {
+    const intervalMs = reminder.intervalMinutes * 60_000;
+    if (!(intervalMs > 0)) continue;
+    const next = (Math.floor(fromMs / intervalMs) + 1) * intervalMs;
+    if (next <= toMs && next < dueAt) {
+      due = reminder;
+      dueAt = next;
+    }
+  }
+  return due;
+}
+
+export function parseReminders(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object" &&
+      typeof item.label === "string" && item.label.trim() &&
+      isValidMinutes(item.intervalMinutes))
+    .slice(0, 20)
+    .map((item) => ({
+      id: typeof item.id === "string" && item.id ? item.id : makeId(),
+      label: item.label.trim().slice(0, 80),
+      intervalMinutes: item.intervalMinutes,
+    }));
 }
 
 export function startTimer(durationMs, now = Date.now()) {
@@ -121,6 +200,17 @@ export function formatDuration(totalMinutes) {
   return `${hours}h ${remainder}m`;
 }
 
+// Focus Flow's display rule: MM:SS under an hour so the digits stay as big as
+// possible, HH:MM:SS only when the hours carry information.
+export function formatTimerDisplay(milliseconds) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1_000));
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const remainder = seconds % 60;
+  const parts = hours ? [hours, minutes, remainder] : [minutes, remainder];
+  return parts.map((part) => String(part).padStart(2, "0")).join(":");
+}
+
 export function formatCountdown(milliseconds) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1_000));
   const hours = Math.floor(seconds / 3_600);
@@ -138,13 +228,8 @@ export function defaultState(now = Date.now()) {
     version: STATE_VERSION,
     planStartTime: schedule.startTime,
     blocks: schedule.blocks,
-    session: {
-      phase: "draft",
-      currentIndex: 0,
-      endAt: null,
-      remainingMs: null,
-      soundPlayed: false,
-    },
+    session: draftSession(),
+    reminders: [],
     soundEnabled: true,
   };
 }
@@ -162,10 +247,20 @@ export function loadState(storage = localStorage, now = Date.now()) {
     const phase = parsed.session.phase;
     if (!phases.has(phase)) throw new Error("Invalid timer phase");
 
+    // Everything below quickMinutes is optional on purpose: state saved by the
+    // PR #1 release has none of these fields and must keep loading as version
+    // 1 instead of being discarded by a version bump.
+    const quickMinutes = phase !== "draft" && isValidMinutes(parsed.session.quickMinutes)
+      ? parsed.session.quickMinutes
+      : null;
+    const runningCount = quickMinutes ? 1 : schedule.blocks.length;
+    const nonNegative = (value) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0);
+    const reminders = parseReminders(parsed.reminders);
+
     let currentIndex = parsed.session.currentIndex;
     if (phase === "draft") currentIndex = 0;
-    else if (phase === "completed") currentIndex = schedule.blocks.length;
-    else if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= schedule.blocks.length) {
+    else if (phase === "completed") currentIndex = runningCount;
+    else if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= runningCount) {
       throw new Error("Invalid current block");
     }
 
@@ -184,7 +279,8 @@ export function loadState(storage = localStorage, now = Date.now()) {
       id: typeof parsed.blocks[index]?.id === "string" && parsed.blocks[index].id
         ? parsed.blocks[index].id
         : block.id,
-      status: phase === "completed" || (phase !== "draft" && index < currentIndex)
+      // A quick session never touches the plan, so its blocks stay pending.
+      status: !quickMinutes && (phase === "completed" || (phase !== "draft" && index < currentIndex))
         ? "complete"
         : "pending",
     }));
@@ -199,7 +295,16 @@ export function loadState(storage = localStorage, now = Date.now()) {
         endAt: phase === "running" ? parsed.session.endAt : null,
         remainingMs: phase === "draft" ? null : phase === "completed" || phase === "expired" ? 0 : rawRemaining,
         soundPlayed: parsed.session.soundPlayed === true,
+        quickMinutes,
+        focusedBeforeMs: phase === "draft" ? 0 : nonNegative(parsed.session.focusedBeforeMs),
+        reminderCheckedMs: phase === "draft" ? 0 : nonNegative(parsed.session.reminderCheckedMs),
+        // Only a paused session can be waiting on a reminder (firing pauses
+        // the timer), and the reminder must still exist after edits.
+        activeReminderId: phase === "paused" && reminders.some((item) => item.id === parsed.session.activeReminderId)
+          ? parsed.session.activeReminderId
+          : null,
       },
+      reminders,
       soundEnabled: parsed.soundEnabled !== false,
     };
   } catch {
